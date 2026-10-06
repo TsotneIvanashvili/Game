@@ -5,7 +5,9 @@
 -- Disconnect/rejoin: a player's expedition (pack, injuries, checkpoint, stats) is kept for
 -- REJOIN_GRACE_SECONDS. Rejoining the same server restores it, so a dropped connection
 -- doesn't wipe your progress. The pack is never also dropped in the world, so the stash is
--- the only copy: no duplication.
+-- the only copy: no duplication. Exception: leaving while DOWNED counts as an evacuation
+-- (RescueService.evacuate(player, true)) — the pack is dropped where you fell and the stash
+-- keeps the emptied record, so a disconnect can't dodge the evacuation penalty.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -31,13 +33,21 @@ local function onCharacter(player: Player, character: Model)
 	humanoid.UseJumpPower = false
 	humanoid.JumpHeight = GameConfig.JUMP_HEIGHT
 	humanoid.WalkSpeed = GameConfig.WALK_SPEED
+	-- Roblox inserts a default "Health" Script that regenerates 1% MaxHealth/s regardless of
+	-- game state. Health is owned by SurvivalService (fed/watered regen, cold damage, downed
+	-- at 1 HP), so remove the engine regen or it silently undoes all of that.
+	local regen = character:FindFirstChild("Health")
+	if regen and regen:IsA("Script") then
+		regen:Destroy()
+	end
 
 	local record = PlayerStore.get(player)
 	if record then
+		-- Normally already released on CharacterRemoving/Died; this catches the first
+		-- character after a rejoin. Release properly (both sides), never just nil the fields.
+		Registry.get("RescueService").resetCharacter(player)
 		record.climbing = nil
 		record.resting = false
-		record.carrying = nil
-		record.carriedBy = nil
 		record.peakY = nil
 		record.lastPosition = nil
 		player:SetAttribute("Climbing", false)
@@ -58,6 +68,9 @@ local function onCharacter(player: Player, character: Model)
 
 	humanoid.Died:Connect(function()
 		-- Deaths bypassing the downed system (e.g. exploits, engine kill planes) just respawn.
+		-- Drop any carry (either side) and the downed prompts now, not at respawn: otherwise a
+		-- carrier holds a corpse (or a carried player stays welded) for RespawnTime.
+		Registry.get("RescueService").resetCharacter(player)
 		local r = PlayerStore.get(player)
 		if r then
 			r.downed = false
@@ -124,6 +137,10 @@ function PlayerService.Start()
 		player.CharacterAdded:Connect(function(character)
 			onCharacter(player, character)
 		end)
+		player.CharacterRemoving:Connect(function()
+			-- LoadCharacter / respawn: unweld and clear carry state while the old parts exist.
+			Registry.get("RescueService").resetCharacter(player)
+		end)
 	end
 	Players.PlayerAdded:Connect(hook)
 	for _, player in Players:GetPlayers() do
@@ -133,6 +150,10 @@ function PlayerService.Start()
 	Players.PlayerRemoving:Connect(function(player)
 		local record = PlayerStore.get(player)
 		if record then
+			if record.downed then
+				-- Disconnecting while downed = evacuation (pack stays on the mountain).
+				Registry.get("RescueService").evacuate(player, true)
+			end
 			Registry.get("RescueService").releaseAll(player)
 			record.climbing = nil
 			record.resting = false

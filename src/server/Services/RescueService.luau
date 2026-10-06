@@ -72,6 +72,9 @@ function RescueService.release(carrier: Player)
 	end
 	if target then
 		local targetRecord = PlayerStore.get(target)
+		if targetRecord and targetRecord.carriedBy ~= carrier then
+			return -- stale link; the target is not ours to release (never touch another carry)
+		end
 		if targetRecord then
 			targetRecord.carriedBy = nil
 			targetRecord.peakY = nil
@@ -106,6 +109,15 @@ function RescueService.releaseAll(player: Player)
 	if record.carriedBy then
 		RescueService.release(record.carriedBy)
 	end
+end
+
+-- The player's character is dying or being replaced. Drop any carry relationship and the
+-- downed prompts/marker so nothing keeps pointing at (or welded to) the old character.
+-- Without this a carrier who died/respawned left the target flagged `carriedBy` forever
+-- (PlatformStand, massless, uncarryable).
+function RescueService.resetCharacter(player: Player)
+	RescueService.releaseAll(player)
+	clearDownedUi(player)
 end
 
 local function carry(carrier: Player, target: Player)
@@ -287,7 +299,11 @@ end
 -- Bleed-out ran out (or the player gave up): wake at the last camp, pack left behind.
 local evacuating: { [Player]: boolean } = {}
 
-function RescueService.evacuate(player: Player)
+-- `leaving`: the player disconnected while downed. Same outcome as bleeding out (pack left
+-- where they fell, stats floored) but no respawn; the emptied record is what PlayerService
+-- stashes, so the pack exists exactly once (on the ground) and a disconnect can't be used
+-- to dodge the evacuation penalty.
+function RescueService.evacuate(player: Player, leaving: boolean?)
 	local record = PlayerStore.get(player)
 	if not record or evacuating[player] then
 		return
@@ -295,14 +311,15 @@ function RescueService.evacuate(player: Player)
 	evacuating[player] = true
 	RescueService.releaseAll(player)
 	local root = rootOf(player)
+	local dropAt = if root then root.Position else record.lastPosition
 	local InventoryService = Registry.get("InventoryService")
 	local stacks = InventoryService.takeAll(player)
-	if root and #stacks > 0 then
+	if dropAt and #stacks > 0 then
 		local ground = {}
 		for _, s in stacks do
 			table.insert(ground, { itemId = s.itemId, qty = s.qty, data = s.data })
 		end
-		Registry.get("ResourceService").spawnContainer("Pack", ground, root.Position, player.DisplayName)
+		Registry.get("ResourceService").spawnContainer("Pack", ground, dropAt, player.DisplayName)
 	end
 	clearDownedUi(player)
 	record.downed = false
@@ -330,7 +347,14 @@ function RescueService.evacuate(player: Player)
 	InventoryService.add(player, "energy_bar", 1, nil, true)
 	InventoryService.sync(player)
 
-	player:LoadCharacter() -- PlayerService moves the new character to the last camp
+	if leaving then
+		evacuating[player] = nil
+		remote().notifyAll(player.DisplayName .. " left while down. Their pack is still on the mountain.", "warn")
+		return
+	end
+	if player.Parent then
+		player:LoadCharacter() -- PlayerService moves the new character to the last camp
+	end
 	evacuating[player] = nil
 	remote().notify(player, "You were evacuated to your last camp. Your gear is where you fell.", "warn")
 	remote().notifyAll(player.DisplayName .. " was evacuated. Their pack is still on the mountain.", "warn")
@@ -364,34 +388,53 @@ function RescueService.Start()
 		while true do
 			task.wait(1)
 			for player, record in PlayerStore.all() do
-				if record.downed then
-					local root = rootOf(player)
-					local rate = 1
-					if InjuryModel.has(record.survival.injuries, "Bleeding") then
-						rate *= 1.5
+				-- pcall per player: one bad record must not kill this loop (and every
+				-- future bleed-out) for the whole server.
+				local ok, err = pcall(function()
+					if record.downed then
+						local root = rootOf(player)
+						local rate = 1
+						if InjuryModel.has(record.survival.injuries, "Bleeding") then
+							rate *= 1.5
+						end
+						if record.carriedBy then
+							rate *= 0.5
+						end
+						if root and Registry.get("BuildingService").environmentAt(root.Position).fireHeatC > 0 then
+							rate *= 0.5
+						end
+						record.bleedOut -= rate
+						player:SetAttribute("BleedOut", math.max(0, math.floor(record.bleedOut)))
+						local ui = downedUi[player]
+						local label = ui and ui.gui and ui.gui:FindFirstChild("Label") :: TextLabel?
+						if label then
+							local secs = math.max(0, math.floor(record.bleedOut))
+							label.Text = string.format("DOWNED  %d:%02d", secs // 60, secs % 60)
+						end
+						if record.bleedOut <= 0 then
+							record.bleedOut = math.huge -- guard against re-entry while evacuating
+							task.spawn(RescueService.evacuate, player) -- LoadCharacter yields
+						end
 					end
-					if record.carriedBy then
-						rate *= 0.5
+					-- A carrier who starts climbing or goes down drops their load. Also drop it if
+					-- the target's side of the relationship or character is gone (defensive).
+					local target = record.carrying
+					if target then
+						local targetRecord = PlayerStore.get(target)
+						if
+							record.climbing
+							or record.downed
+							or not target.Parent
+							or not targetRecord
+							or targetRecord.carriedBy ~= player
+							or not rootOf(target)
+						then
+							RescueService.release(player)
+						end
 					end
-					if root and Registry.get("BuildingService").environmentAt(root.Position).fireHeatC > 0 then
-						rate *= 0.5
-					end
-					record.bleedOut -= rate
-					player:SetAttribute("BleedOut", math.max(0, math.floor(record.bleedOut)))
-					local ui = downedUi[player]
-					local label = ui and ui.gui and ui.gui:FindFirstChild("Label") :: TextLabel?
-					if label then
-						local secs = math.max(0, math.floor(record.bleedOut))
-						label.Text = string.format("DOWNED  %d:%02d", secs // 60, secs % 60)
-					end
-					if record.bleedOut <= 0 then
-						record.bleedOut = math.huge -- guard against re-entry while evacuating
-						task.spawn(RescueService.evacuate, player) -- LoadCharacter yields
-					end
-				end
-				-- A carrier who starts climbing or goes down drops their load.
-				if record.carrying and (record.climbing or record.downed or not record.carrying.Parent) then
-					RescueService.release(player)
+				end)
+				if not ok then
+					warn("[RescueService] tick error for " .. player.Name .. ": " .. tostring(err))
 				end
 			end
 		end
