@@ -10,8 +10,11 @@ local Controllers = script:WaitForChild("Controllers")
 -- NotificationController first: others toast through it during their own Start.
 local ORDER = {
 	"NotificationController",
+	"TitleController",
 	"PanelController",
 	"InventoryController",
+	"GearMenuController",
+	"HotbarController",
 	"BuildBookController",
 	"HUDController",
 	"ClimbingController",

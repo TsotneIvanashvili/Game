@@ -1,5 +1,5 @@
 --!strict
--- End-of-section summary. When you reach the Ridge Col the server sends ExpeditionSummary
+-- End-of-expedition summary. When you reach the summit the server sends ExpeditionSummary
 -- with your stats (ExpeditionService.summaryFor); this shows them in a centred panel until
 -- you close it. Display only: nobody is teleported or reset from here.
 
@@ -17,7 +17,8 @@ local T = UI.Theme
 
 local panel: Frame
 local subtitle: TextLabel
-local rows: Frame
+local tiles: Frame
+local weatherLabel: TextLabel
 
 local function num(v: any): number
 	return if typeof(v) == "number" then v else 0
@@ -25,41 +26,35 @@ end
 
 local function formatTime(seconds: number): string
 	local s = math.max(0, math.floor(seconds))
+	if s >= 3600 then
+		return string.format("%d:%02d:%02d", s // 3600, (s // 60) % 60, s % 60)
+	end
 	return string.format("%02d:%02d", s // 60, s % 60)
 end
 
-local function addRow(order: number, label: string, value: string)
-	local row = UI.create("Frame", {
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		BackgroundTransparency = 1,
-		LayoutOrder = order,
-		Parent = rows,
-	})
-	UI.label(label, 14, {
-		Size = UDim2.new(0.45, 0, 0, 22),
+local function addTile(order: number, label: string, value: string, highlight: boolean?)
+	local tile = UI.inset({ LayoutOrder = order, Parent = tiles })
+	UI.label(label, 12, {
+		Position = UDim2.fromOffset(12, 6),
+		Size = UDim2.new(1, -24, 0, 16),
 		TextColor3 = T.Muted,
-		Parent = row,
+		Parent = tile,
 	})
-	UI.label(value, 14, {
-		Position = UDim2.fromScale(0.45, 0),
-		Size = UDim2.new(0.55, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		Font = T.FontBold,
-		TextXAlignment = Enum.TextXAlignment.Right,
-		Parent = row,
+	UI.title(value, 22, {
+		Position = UDim2.fromOffset(12, 24),
+		Size = UDim2.new(1, -24, 0, 28),
+		TextColor3 = if highlight then T.Cyan else T.White,
+		TextWrapped = false,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Parent = tile,
 	})
 end
 
 local function render(stats: { [string]: any })
-	for _, child in rows:GetChildren() do
-		if child:IsA("GuiObject") then
-			child:Destroy()
-		end
-	end
+	UI.clear(tiles)
 	subtitle.Text = if typeof(stats.name) == "string"
-		then stats.name .. "  ·  Section complete"
-		else "Section complete"
+		then stats.name .. "  ·  Expedition complete"
+		else "Expedition complete"
 
 	local weather = {}
 	if typeof(stats.weatherSurvived) == "table" then
@@ -69,11 +64,10 @@ local function render(stats: { [string]: any })
 	end
 
 	local entries = {
-		{ "Max elevation", string.format("%d m", num(stats.maxElevationM)) },
+		{ "Max elevation", string.format("%d m", num(stats.maxElevationM)), true },
+		{ "Time", formatTime(num(stats.timeSeconds)), true },
 		{ "Distance", string.format("%d m", num(stats.distanceM)) },
-		{ "Time", formatTime(num(stats.timeSeconds)) },
 		{ "Highest checkpoint", tostring(num(stats.highestCheckpoint)) },
-		{ "Weather survived", if #weather > 0 then table.concat(weather, ", ") else "None" },
 		{ "Disasters survived", tostring(num(stats.disastersSurvived)) },
 		{ "Teammates rescued", tostring(num(stats.teammatesRescued)) },
 		{ "Items consumed", tostring(num(stats.itemsConsumed)) },
@@ -81,8 +75,9 @@ local function render(stats: { [string]: any })
 		{ "Resources collected", tostring(num(stats.resourcesCollected)) },
 	}
 	for i, entry in entries do
-		addRow(i, entry[1], entry[2])
+		addTile(i, entry[1], entry[2], entry[3] == true)
 	end
+	weatherLabel.Text = "Weather survived: " .. (if #weather > 0 then table.concat(weather, ", ") else "None")
 end
 
 local function close()
@@ -93,33 +88,52 @@ end
 
 function SummaryController.Init()
 	local gui = UI.screen("ExpeditionSummary", 4)
-	panel = UI.panel("SummaryPanel", UDim2.fromOffset(440, 470), gui)
+	panel = UI.panel("SummaryPanel", UDim2.fromOffset(560, 600), gui)
 	UI.autoScale(panel)
-	UI.label("RIDGE COL REACHED", 24, {
-		Position = UDim2.fromOffset(0, 18),
-		Size = UDim2.new(1, 0, 0, 30),
-		TextXAlignment = Enum.TextXAlignment.Center,
-		Font = T.FontBold,
-		TextColor3 = T.Accent,
+	UI.icon("mountain", {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 14),
+		Size = UDim2.fromOffset(64, 64),
 		Parent = panel,
 	})
-	subtitle = UI.label("", 14, {
-		Position = UDim2.fromOffset(0, 52),
+	UI.title("SUMMIT REACHED", 40, {
+		Position = UDim2.fromOffset(0, 76),
+		Size = UDim2.new(1, 0, 0, 46),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextWrapped = false,
+		Parent = panel,
+	})
+	subtitle = UI.label("", 15, {
+		Position = UDim2.fromOffset(0, 122),
 		Size = UDim2.new(1, 0, 0, 20),
 		TextXAlignment = Enum.TextXAlignment.Center,
 		TextColor3 = T.Muted,
 		Parent = panel,
 	})
-	rows = UI.create("Frame", {
-		Position = UDim2.fromOffset(28, 86),
-		Size = UDim2.new(1, -56, 1, -150),
+	tiles = UI.create("Frame", {
+		Position = UDim2.fromOffset(28, 154),
+		Size = UDim2.new(1, -56, 0, 5 * 66),
 		BackgroundTransparency = 1,
 		Parent = panel,
-	}, { UI.list(Enum.FillDirection.Vertical, 4) })
-	UI.button("Close", close, {
+	}, {
+		UI.create("UIGridLayout", {
+			CellSize = UDim2.new(0.5, -5, 0, 58),
+			CellPadding = UDim2.fromOffset(10, 8),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+	weatherLabel = UI.label("", 13, {
+		Position = UDim2.fromOffset(28, 154 + 5 * 66 + 2),
+		Size = UDim2.new(1, -56, 0, 36),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Parent = panel,
+	})
+	UI.button("Continue", close, {
 		AnchorPoint = Vector2.new(0.5, 1),
 		Position = UDim2.new(0.5, 0, 1, -18),
-		Size = UDim2.fromOffset(140, 34),
+		Size = UDim2.fromOffset(200, 50),
+		TextSize = 24,
+		BackgroundColor3 = T.Green,
 		Modal = true, -- frees the mouse while the panel is open
 		Parent = panel,
 	})

@@ -1,8 +1,9 @@
 --!strict
 -- Gear toggles (H, or the helmet button on the left edge): show/hide Helmet, Mask, Goggles
 -- and the helmet Light. The switch sends GearToggle(part, on) and the server owns the
--- result, published as Player attributes GearHelmet / GearMask / GearGoggles / GearLight
--- (nil = on for a worn item). A part you aren't wearing is locked (padlock).
+-- result, published as Player attributes GearHelmet / GearMask / GearGoggles / GearLight.
+-- nil means "shown" for worn items and "off" for the light (EquipmentService defaults).
+-- A part you aren't wearing is locked (padlock); the light needs a headlamp helmet.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -46,17 +47,33 @@ local function isOn(part: string): boolean
 		return p.on
 	end
 	pending[part] = nil
-	return player:GetAttribute("Gear" .. part) ~= false
+	local value = player:GetAttribute("Gear" .. part)
+	if part == "Light" then
+		return value == true
+	end
+	return value ~= false
+end
+
+-- Whether the toggle can do anything, and the line shown under its name.
+local function availability(entry: { part: string, slot: string }): (boolean, string)
+	local def = wornItem(entry.slot)
+	if not def then
+		return false,
+			if entry.part == "Light" then "Needs a helmet with a headlamp" else "Not worn  ·  get one at the outfitter"
+	end
+	if entry.part == "Light" and not (def.clothing and def.clothing.headlamp) then
+		return false, def.name .. " has no headlamp"
+	end
+	return true, def.name
 end
 
 local function render()
 	for _, entry in PARTS do
 		local row = rows[entry.part]
-		local def = wornItem(entry.slot)
-		local worn = def ~= nil
-		row.toggle.set(isOn(entry.part), worn)
-		row.name.TextColor3 = if worn then T.White else T.Muted
-		row.sub.Text = if worn then def.name else "Not worn  ·  get one at the outfitter"
+		local usable, line = availability(entry)
+		row.toggle.set(isOn(entry.part), usable)
+		row.name.TextColor3 = if usable then T.White else T.Muted
+		row.sub.Text = line
 	end
 end
 

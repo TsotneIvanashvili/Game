@@ -830,7 +830,7 @@ local function buildDowned()
 		BackgroundColor3 = T.Red,
 		BorderSizePixel = 0,
 		Parent = giveUp,
-	})
+	}, { UI.corner(16) })
 	local holdText = UI.title("Hold to give up (evacuate)", 18, {
 		Size = UDim2.fromScale(1, 1),
 		TextXAlignment = Enum.TextXAlignment.Center,

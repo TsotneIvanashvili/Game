@@ -28,8 +28,7 @@ local panel: Frame
 local pages: ScrollingFrame
 local sectionBar: Frame
 local section = "Fire"
-local placeButton: TextButton
-local cancelButton: TextButton
+local placeBar: Frame
 
 local ghost: Part? = nil
 local placingRecipe: RecipeDefs.Recipe? = nil
@@ -71,8 +70,7 @@ local function stopPlacing()
 		renderConn:Disconnect()
 		renderConn = nil
 	end
-	placeButton.Visible = false
-	cancelButton.Visible = false
+	placeBar.Visible = false
 	if inputConn then
 		inputConn:Disconnect()
 		inputConn = nil
@@ -154,8 +152,7 @@ local function startPlacing(recipe: RecipeDefs.Recipe)
 	g.Size = recipe.footprint
 	g.Parent = workspace
 	ghost = g
-	placeButton.Visible = true
-	cancelButton.Visible = true
+	placeBar.Visible = true
 
 	renderConn = RunService.RenderStepped:Connect(function()
 		local pos, normal = aimPoint()
@@ -191,89 +188,122 @@ local function startPlacing(recipe: RecipeDefs.Recipe)
 	end)
 end
 
+local SECTION_ICONS = {
+	Fire = "flame",
+	Shelters = "tent",
+	Climbing = "rope",
+	Survival = "drop",
+	Navigation = "flag",
+	Advanced = "hammer",
+}
+
 local function render()
 	for _, b in sectionBar:GetChildren() do
 		if b:IsA("TextButton") then
-			b.BackgroundColor3 = if b.Name == section then T.Accent else T.PanelLight
+			local selected = b.Name == section
+			b.BackgroundColor3 = if selected then T.White else T.BlueDark
+			b.TextColor3 = if selected then T.Blue else T.White
 		end
 	end
-	for _, c in pages:GetChildren() do
-		if c:IsA("GuiObject") then
-			c:Destroy()
-		end
-	end
-	UI.list(Enum.FillDirection.Vertical, 8).Parent = pages
+	UI.clear(pages)
 	local order = 0
 	for _, recipe in RecipeDefs.List do
 		if recipe.section == section then
 			order += 1
-			local card = UI.create("Frame", {
-				Size = UDim2.new(1, -10, 0, 86),
-				BackgroundColor3 = T.PanelLight,
+			local available = recipe.implemented and recipe.unlockedByDefault
+			local card = UI.inset({
+				Size = UDim2.new(1, -12, 0, 112),
 				LayoutOrder = order,
 				Parent = pages,
-			}, { UI.corner(6) })
-			if not recipe.implemented or not recipe.unlockedByDefault then
+			})
+			UI.stroke(if available then T.White else T.Disabled, 2).Parent = card
+			local disc = UI.create("Frame", {
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.new(0, 14, 0.5, 0),
+				Size = UDim2.fromOffset(64, 64),
+				BackgroundColor3 = if available then T.Orange else T.Disabled,
+				BorderSizePixel = 0,
+				Parent = card,
+			}, { UI.round(), UI.stroke(T.White, 3) })
+			UI.icon(if available then SECTION_ICONS[recipe.section] or "hammer" else "lock", {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.5, 0.5),
+				Size = UDim2.fromScale(0.6, 0.6),
+				Parent = disc,
+			}, {
+				bg = disc.BackgroundColor3,
+				accent = if available then T.White else nil,
+			})
+			if not available then
 				-- Blueprints found during play are tracked server-side; the slice ships with the
 				-- default set, so anything else reads as a missing page.
-				UI.label(recipe.name, 15, {
-					Position = UDim2.fromOffset(12, 6),
-					Size = UDim2.new(1, -24, 0, 20),
-					Font = T.FontBold,
+				UI.title(recipe.name, 20, {
+					Position = UDim2.fromOffset(92, 18),
+					Size = UDim2.new(1, -110, 0, 26),
 					TextColor3 = T.Muted,
 					Parent = card,
 				})
-				UI.label("Blueprint missing. Pages are found on the mountain.", 12, {
-					Position = UDim2.fromOffset(12, 30),
-					Size = UDim2.new(1, -24, 0, 18),
+				UI.label("Blueprint missing. Pages are found on the mountain.", 13, {
+					Position = UDim2.fromOffset(92, 50),
+					Size = UDim2.new(1, -110, 0, 36),
 					TextColor3 = T.Muted,
 					Parent = card,
 				})
 			else
-				UI.label(recipe.name, 15, {
-					Position = UDim2.fromOffset(12, 6),
-					Size = UDim2.new(1, -150, 0, 20),
-					Font = T.FontBold,
+				UI.title(recipe.name, 20, {
+					Position = UDim2.fromOffset(92, 8),
+					Size = UDim2.new(1, -230, 0, 26),
 					Parent = card,
 				})
 				UI.label(recipe.description, 12, {
-					Position = UDim2.fromOffset(12, 28),
-					Size = UDim2.new(1, -150, 0, 30),
+					Position = UDim2.fromOffset(92, 34),
+					Size = UDim2.new(1, -230, 0, 34),
 					TextColor3 = T.Muted,
+					TextYAlignment = Enum.TextYAlignment.Top,
 					Parent = card,
 				})
-				local costs = {}
-				for itemId, qty in recipe.cost do
+				local chips = UI.create("Frame", {
+					Position = UDim2.fromOffset(92, 74),
+					Size = UDim2.new(1, -230, 0, 26),
+					BackgroundTransparency = 1,
+					Parent = card,
+				}, { UI.list(Enum.FillDirection.Horizontal, 6) })
+				local ids = {}
+				for itemId in recipe.cost do
+					table.insert(ids, itemId)
+				end
+				table.sort(ids)
+				for i, itemId in ids do
+					local qty = recipe.cost[itemId]
 					local def = ItemDefs.ById[itemId]
 					local have = countItem(itemId)
-					table.insert(costs, string.format("%s %d/%d", if def then def.name else itemId, have, qty))
+					UI.pill(
+						string.format("%s %d/%d", if def then def.name else itemId, have, qty),
+						if have >= qty then T.Green else T.Red,
+						{ LayoutOrder = i, Parent = chips }
+					)
 				end
 				if recipe.requiresTool then
 					local def = ItemDefs.ById[recipe.requiresTool]
-					table.insert(
-						costs,
-						string.format(
-							"needs %s%s",
-							if def then def.name else recipe.requiresTool,
-							if countItem(recipe.requiresTool) > 0 then "" else " (missing)"
-						)
+					local has = countItem(recipe.requiresTool) > 0
+					UI.pill(
+						"needs " .. (if def then def.name else recipe.requiresTool),
+						if has then T.Green else T.Red,
+						{ LayoutOrder = 99, Parent = chips }
 					)
 				end
-				local affordable = canAfford(recipe)
-				UI.label(table.concat(costs, "  ·  "), 12, {
-					Position = UDim2.fromOffset(12, 60),
-					Size = UDim2.new(1, -150, 0, 18),
-					TextColor3 = if affordable then T.Good else T.Warn,
-					Parent = card,
-				})
-				UI.button("Build", function()
+				local b = UI.button("Build", function()
 					startPlacing(recipe)
 				end, {
 					AnchorPoint = Vector2.new(1, 0.5),
-					Position = UDim2.new(1, -10, 0.5, 0),
-					Size = UDim2.fromOffset(110, 34),
+					Position = UDim2.new(1, -14, 0.5, 0),
+					Size = UDim2.fromOffset(120, 46),
+					TextSize = 22,
 					Parent = card,
 				})
+				-- Still clickable when short: the ghost shows red and the server explains.
+				UI.setButtonEnabled(b, canAfford(recipe), T.Green)
+				b.AutoButtonColor = true
 			end
 		end
 	end
@@ -290,61 +320,95 @@ end
 
 function BuildBookController.Init()
 	local gui = UI.screen("BuildBook", 3)
-	panel = UI.panel("BuildBook", UDim2.fromOffset(640, 520), gui)
+	panel = UI.panel("BuildBook", UDim2.fromOffset(720, 580), gui)
 	UI.autoScale(panel)
-	UI.label(
-		"BUILD BOOK",
-		18,
-		{ Position = UDim2.fromOffset(16, 10), Size = UDim2.new(0, 200, 0, 24), Font = T.FontBold, Parent = panel }
-	)
-	UI.button("Close", function()
+	UI.header(panel, "BUILD BOOK", "hammer", function()
 		ClientState.setPanel(nil)
-	end, {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -12, 0, 10),
-		Size = UDim2.fromOffset(70, 26),
-		Parent = panel,
-		Modal = true,
-	})
+	end)
 	sectionBar = UI.create("Frame", {
-		Position = UDim2.fromOffset(16, 44),
-		Size = UDim2.new(1, -32, 0, 28),
+		Position = UDim2.fromOffset(20, 66),
+		Size = UDim2.new(1, -40, 0, 32),
 		BackgroundTransparency = 1,
 		Parent = panel,
 	}, {
-		UI.list(Enum.FillDirection.Horizontal, 4),
+		UI.list(Enum.FillDirection.Horizontal, 6),
 	})
 	for i, name in RecipeDefs.Sections do
-		UI.button(name, function()
+		local b = UI.button(name, function()
 			section = name
 			render()
-		end, { Name = name, LayoutOrder = i, Size = UDim2.fromOffset(96, 26), TextSize = 12, Parent = sectionBar })
+		end, {
+			Name = name,
+			LayoutOrder = i,
+			Size = UDim2.fromOffset(108, 30),
+			TextSize = 14,
+			Font = T.Font,
+			BackgroundColor3 = T.BlueDark,
+			Parent = sectionBar,
+		})
+		local stroke = b:FindFirstChildOfClass("UIStroke")
+		if stroke then
+			stroke.Thickness = 2
+		end
 	end
-	pages = UI.create("ScrollingFrame", {
-		Position = UDim2.fromOffset(16, 80),
-		Size = UDim2.new(1, -32, 1, -92),
-		BackgroundTransparency = 1,
-		ScrollBarThickness = 6,
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		CanvasSize = UDim2.new(),
+	local holder = UI.inset({
+		Position = UDim2.fromOffset(18, 108),
+		Size = UDim2.new(1, -36, 1, -126),
+		BackgroundColor3 = T.BlueDeep,
 		Parent = panel,
 	})
-	placeButton = UI.button("Place", confirm, {
+	pages = UI.create("ScrollingFrame", {
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ScrollBarThickness = 6,
+		ScrollBarImageColor3 = T.White,
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		CanvasSize = UDim2.new(),
+		Parent = holder,
+	}, { UI.padding(12), UI.list(Enum.FillDirection.Vertical, 10) })
+
+	-- Placement controls (above the hotbar).
+	placeBar = UI.create("Frame", {
+		Name = "Placement",
 		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, -70, 1, -110),
-		Size = UDim2.fromOffset(120, 40),
+		Position = UDim2.new(0.5, 0, 1, -190),
+		Size = UDim2.fromOffset(300, 84),
+		BackgroundTransparency = 1,
 		Visible = false,
 		Parent = gui,
 	})
-	cancelButton = UI.button("Cancel", function()
+	UI.autoScale(placeBar)
+	UI.button("Place", confirm, {
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.fromScale(0, 1),
+		Size = UDim2.fromOffset(140, 50),
+		TextSize = 24,
+		BackgroundColor3 = T.Green,
+		Parent = placeBar,
+	})
+	UI.button("Cancel", function()
 		stopPlacing()
 	end, {
-		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 70, 1, -110),
-		Size = UDim2.fromOffset(120, 40),
-		Visible = false,
-		Parent = gui,
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.fromScale(1, 1),
+		Size = UDim2.fromOffset(140, 50),
+		TextSize = 24,
+		BackgroundColor3 = T.Red,
+		Parent = placeBar,
 	})
+	UI.title(
+		if UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+			then "Walk to aim  ·  tap Place"
+			else "Click to place  ·  R rotate  ·  right-click cancel",
+		16,
+		{
+			Size = UDim2.new(1, 0, 0, 22),
+			TextXAlignment = Enum.TextXAlignment.Center,
+			TextWrapped = false,
+			Parent = placeBar,
+		}
+	)
 end
 
 function BuildBookController.Start()
@@ -368,8 +432,7 @@ function BuildBookController.Start()
 			end
 		end
 		return Enum.ContextActionResult.Sink
-	end, true, Enum.KeyCode.B)
-	ContextActionService:SetTitle("ToggleBuildBook", "Build")
+	end, false, Enum.KeyCode.B) -- touch uses the round Build button on the left edge
 	player.CharacterRemoving:Connect(stopPlacing)
 end
 
