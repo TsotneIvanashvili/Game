@@ -207,16 +207,12 @@ local function render()
 	for _, recipe in RecipeDefs.List do
 		if recipe.section == section then
 			order += 1
-			local card = UI.create(
-				"Frame",
-				{
-					Size = UDim2.new(1, -10, 0, 86),
-					BackgroundColor3 = T.PanelLight,
-					LayoutOrder = order,
-					Parent = pages,
-				},
-				{ UI.corner(6) }
-			)
+			local card = UI.create("Frame", {
+				Size = UDim2.new(1, -10, 0, 86),
+				BackgroundColor3 = T.PanelLight,
+				LayoutOrder = order,
+				Parent = pages,
+			}, { UI.corner(6) })
 			if not recipe.implemented or not recipe.unlockedByDefault then
 				-- Blueprints found during play are tracked server-side; the slice ships with the
 				-- default set, so anything else reads as a missing page.

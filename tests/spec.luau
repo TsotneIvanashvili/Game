@@ -32,10 +32,26 @@ local function gearFor(ids)
 end
 
 local STARTER = { "cotton_tee", "fleece_jacket", "liner_gloves", "hiking_pants", "trail_runners" }
-local EXPEDITION = { "wool_beanie", "balaclava", "merino_base", "insulated_parka", "insulated_gloves", "insulated_pants", "alpine_boots" }
+local EXPEDITION = {
+	"wool_beanie",
+	"balaclava",
+	"merino_base",
+	"insulated_parka",
+	"insulated_gloves",
+	"insulated_pants",
+	"alpine_boots",
+}
 
 local function env(overrides)
-	local e = { airTempC = 8, windMs = 2, precipitation = 0, isSnow = false, inWater = false, fireHeatC = 0, exertion = "walk" }
+	local e = {
+		airTempC = 8,
+		windMs = 2,
+		precipitation = 0,
+		isSnow = false,
+		inWater = false,
+		fireHeatC = 0,
+		exertion = "walk",
+	}
 	for k, v in overrides or {} do
 		e[k] = v
 	end
@@ -205,14 +221,25 @@ end)
 
 test("blizzard in starter clothes gives frostnip within ~3 minutes", function()
 	local s = SurvivalModel.newState()
-	local events = simulate(s, ctx(gearFor(STARTER), { env = env({ airTempC = -14, windMs = 20 * 1.25, precipitation = 1, isSnow = true }) }), 180)
-	truthy(events["Injury:FrostbiteHands1"] or events["Injury:FrostbiteHead1"] or events["Injury:FrostbiteFeet1"], "expected frostnip")
+	local events = simulate(
+		s,
+		ctx(gearFor(STARTER), { env = env({ airTempC = -14, windMs = 20 * 1.25, precipitation = 1, isSnow = true }) }),
+		180
+	)
+	truthy(
+		events["Injury:FrostbiteHands1"] or events["Injury:FrostbiteHead1"] or events["Injury:FrostbiteFeet1"],
+		"expected frostnip"
+	)
 	truthy(s.warmth.Hands < 20, "hands " .. s.warmth.Hands)
 end)
 
 test("light snow in starter clothes is uncomfortable but not frostbite within 6 minutes", function()
 	local s = SurvivalModel.newState()
-	local events = simulate(s, ctx(gearFor(STARTER), { env = env({ airTempC = -0.8, windMs = 7.5, precipitation = 0.35, isSnow = true }) }), 360)
+	local events = simulate(
+		s,
+		ctx(gearFor(STARTER), { env = env({ airTempC = -0.8, windMs = 7.5, precipitation = 0.35, isSnow = true }) }),
+		360
+	)
 	for e in events do
 		truthy(not e:find("Injury:Frost"), "unexpected " .. e)
 	end
@@ -234,7 +261,11 @@ end)
 
 test("blizzard in expedition gear: core stays warm for 5 minutes", function()
 	local s = SurvivalModel.newState()
-	simulate(s, ctx(gearFor(EXPEDITION), { env = env({ airTempC = -14, windMs = 25, precipitation = 1, isSnow = true }) }), 300)
+	simulate(
+		s,
+		ctx(gearFor(EXPEDITION), { env = env({ airTempC = -14, windMs = 25, precipitation = 1, isSnow = true }) }),
+		300
+	)
 	truthy(s.warmth.Torso > 60, "torso " .. s.warmth.Torso)
 	truthy(SurvivalModel.overallWarmth(s) > 45, "overall " .. SurvivalModel.overallWarmth(s))
 end)
@@ -244,7 +275,11 @@ test("a fire rescues a freezing player in under a minute", function()
 	for region in s.warmth do
 		s.warmth[region] = 15
 	end
-	simulate(s, ctx(gearFor(STARTER), { exertion = "rest", env = env({ airTempC = -10, windMs = 3, fireHeatC = 22 }) }), 45)
+	simulate(
+		s,
+		ctx(gearFor(STARTER), { exertion = "rest", env = env({ airTempC = -10, windMs = 3, fireHeatC = 22 }) }),
+		45
+	)
 	truthy(SurvivalModel.overallWarmth(s) > 70, "overall " .. SurvivalModel.overallWarmth(s))
 end)
 
@@ -303,11 +338,23 @@ test("hunger, thirst, cold, fatigue, altitude and weight all reduce stamina rege
 		mutate(s)
 		return SurvivalModel.modifiers(s, weight or 0.3).staminaRegenMult
 	end
-	truthy(regenWith(function(s) s.hunger = 10 end) < base, "hunger")
-	truthy(regenWith(function(s) s.thirst = 10 end) < base, "thirst")
-	truthy(regenWith(function(s) for r in s.warmth do s.warmth[r] = 40 end end) < base, "cold")
-	truthy(regenWith(function(s) s.fatigue = 95 end) < base, "fatigue")
-	truthy(regenWith(function(s) s.oxygen = 60 end) < base, "oxygen")
+	truthy(regenWith(function(s)
+		s.hunger = 10
+	end) < base, "hunger")
+	truthy(regenWith(function(s)
+		s.thirst = 10
+	end) < base, "thirst")
+	truthy(regenWith(function(s)
+		for r in s.warmth do
+			s.warmth[r] = 40
+		end
+	end) < base, "cold")
+	truthy(regenWith(function(s)
+		s.fatigue = 95
+	end) < base, "fatigue")
+	truthy(regenWith(function(s)
+		s.oxygen = 60
+	end) < base, "oxygen")
 end)
 
 test("fatigue shrinks max stamina; starvation shrinks it further", function()
@@ -342,7 +389,16 @@ end)
 test("starvation and dehydration hurt; nothing goes NaN over a long cold run", function()
 	local s = SurvivalModel.newState()
 	s.hunger, s.thirst = 0, 0
-	local _, health = simulate(s, ctx(gearFor(STARTER), { exertion = "climb", elevationM = 9000, weightRatio = 1.3, env = env({ airTempC = -30, windMs = 40, precipitation = 1, isSnow = true }) }), 600)
+	local _, health = simulate(
+		s,
+		ctx(gearFor(STARTER), {
+			exertion = "climb",
+			elevationM = 9000,
+			weightRatio = 1.3,
+			env = env({ airTempC = -30, windMs = 40, precipitation = 1, isSnow = true }),
+		}),
+		600
+	)
 	truthy(health < -100, "health " .. health)
 	for k, v in s do
 		if type(v) == "number" then
