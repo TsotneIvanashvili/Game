@@ -2,7 +2,10 @@
 -- How the body feels, shown rather than told:
 --   * breath vapor puffs from every character's mouth when their air is cold (TempC < 4),
 --     faster while sprinting or climbing (all players, so you can read a teammate's state)
---   * local screen grading: colder = bluer and greyer, thin air = blur, downed = red
+--   * local screen grading: colder = bluer and greyer, thin air = blur, downed = red,
+--     near a fire = warm orange
+--   * an edge vignette (gradient frames, no texture) that grows stronger and bluer as
+--     ColdLevel worsens, glows faint orange by a fire and goes dark red when downed
 --   * a subtle shiver at Severe/Critical cold
 --   * the server's CameraShake event (falls, avalanches), capped so it never gets nauseating
 --
@@ -40,11 +43,33 @@ local COLD_GRADE: { [string]: { saturation: number, tint: Color3 } } = {
 }
 local WHITE = Color3.new(1, 1, 1)
 local DOWNED_TINT = Color3.fromRGB(255, 196, 196)
+local FIRE_TINT = Color3.fromRGB(255, 226, 196)
+local FIRE_SATURATION = 0.06
+
+-- Vignette strength (0..1 opacity at the very edge) and colour per cold level.
+local COLD_VIGNETTE: { [string]: { strength: number, color: Color3 } } = {
+	Mild = { strength = 0.12, color = Color3.fromRGB(200, 222, 245) },
+	Moderate = { strength = 0.28, color = Color3.fromRGB(160, 200, 250) },
+	Severe = { strength = 0.48, color = Color3.fromRGB(110, 165, 250) },
+	Critical = { strength = 0.7, color = Color3.fromRGB(70, 125, 240) },
+}
+local FIRE_VIGNETTE = { strength = 0.16, color = Color3.fromRGB(255, 140, 50) }
+local DOWNED_VIGNETTE = { strength = 0.6, color = Color3.fromRGB(110, 10, 10) }
+local VIGNETTE_DEPTH = 0.32 -- fraction of the screen each edge band covers
 
 local colorCorrection: ColorCorrectionEffect
 local blur: BlurEffect
 local current: Grade = { saturation = 0, contrast = 0, brightness = 0, tint = WHITE, blur = 0 }
 local target: Grade = { saturation = 0, contrast = 0, brightness = 0, tint = WHITE, blur = 0 }
+
+local vignetteGui: ScreenGui? = nil
+local vignetteFrames: { Frame } = {}
+local vignetteStrength = 0
+local vignetteColor = WHITE
+local targetVignetteStrength = 0
+local targetVignetteColor = WHITE
+local appliedVignetteStrength = -1
+local appliedVignetteColor = WHITE
 
 -- Camera shake state.
 local shakeStart = 0
@@ -123,11 +148,26 @@ end
 -- Screen grading -------------------------------------------------------------------------
 
 local function updateTarget()
-	local cold = COLD_GRADE[attr("ColdLevel", "None")]
+	local level = attr("ColdLevel", "None")
+	local cold = COLD_GRADE[level]
 	target.saturation = if cold then cold.saturation else 0
 	target.tint = if cold then cold.tint else WHITE
 	target.contrast = 0
 	target.brightness = 0
+
+	local vignette = COLD_VIGNETTE[level]
+	targetVignetteStrength = if vignette then vignette.strength else 0
+	targetVignetteColor = if vignette then vignette.color else vignetteColor
+
+	-- A fire's glow wins over the cold tint: you are warming up.
+	if attr("NearFire", false) then
+		target.tint = FIRE_TINT
+		target.saturation = math.max(target.saturation * 0.4, FIRE_SATURATION)
+		if targetVignetteStrength < FIRE_VIGNETTE.strength then
+			targetVignetteStrength = FIRE_VIGNETTE.strength
+			targetVignetteColor = FIRE_VIGNETTE.color
+		end
+	end
 
 	local oxygen = attr("Oxygen", 100)
 	local sickness = attr("AltitudeSickness", 0)
@@ -145,10 +185,11 @@ local function updateTarget()
 		target.contrast = 0.25
 		target.brightness = -0.05
 		blurSize = math.max(blurSize, 3)
+		targetVignetteStrength = math.max(targetVignetteStrength, DOWNED_VIGNETTE.strength)
+		targetVignetteColor = DOWNED_VIGNETTE.color
 	end
 	target.blur = math.clamp(blurSize, 0, 10)
 
-	local level = attr("ColdLevel", "None")
 	shiverAmplitude = SHIVER_RAD[level] or 0
 end
 
@@ -171,6 +212,76 @@ local function stepGrade(dt: number)
 	colorCorrection.TintColor = current.tint
 	blur.Size = current.blur
 	blur.Enabled = current.blur > 0.05
+
+	-- Vignette: slower than the grade so it creeps in rather than pops.
+	local kv = 1 - math.exp(-dt * 1.5)
+	vignetteStrength = approach(vignetteStrength, targetVignetteStrength, kv)
+	if vignetteColor ~= targetVignetteColor then
+		vignetteColor = vignetteColor:Lerp(targetVignetteColor, kv)
+	end
+	local colorDrift = math.abs(vignetteColor.R - appliedVignetteColor.R)
+		+ math.abs(vignetteColor.G - appliedVignetteColor.G)
+		+ math.abs(vignetteColor.B - appliedVignetteColor.B)
+	if math.abs(vignetteStrength - appliedVignetteStrength) > 0.002 or colorDrift > 0.004 then
+		appliedVignetteStrength = vignetteStrength
+		appliedVignetteColor = vignetteColor
+		local gui = vignetteGui
+		if gui then
+			gui.Enabled = vignetteStrength > 0.005
+		end
+		for _, frame in vignetteFrames do
+			frame.BackgroundTransparency = 1 - vignetteStrength
+			frame.BackgroundColor3 = vignetteColor
+		end
+	end
+end
+
+-- Four edge bands whose UIGradient fades from opaque at the screen edge to clear inward;
+-- the overlapping corners read darker, like a lens vignette. No texture needed.
+local function buildVignette()
+	local playerGui = player:WaitForChild("PlayerGui")
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "ConditionVignette"
+	gui.ResetOnSpawn = false
+	gui.IgnoreGuiInset = true
+	gui.DisplayOrder = 0 -- under every HUD screen (they use 1+)
+	gui.Enabled = false
+	local fade = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0),
+		NumberSequenceKeypoint.new(0.35, 0.5),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	-- The gradient's start (transparency 0) sits on the screen edge: rotation 0 starts at
+	-- the left, 90 at the top, 180 at the right, -90 at the bottom.
+	local side = VIGNETTE_DEPTH * 0.6 -- screens are wider than tall
+	local bands: { { size: UDim2, position: UDim2, rotation: number } } = {
+		{ size = UDim2.fromScale(1, VIGNETTE_DEPTH), position = UDim2.fromScale(0, 0), rotation = 90 },
+		{
+			size = UDim2.fromScale(1, VIGNETTE_DEPTH),
+			position = UDim2.fromScale(0, 1 - VIGNETTE_DEPTH),
+			rotation = -90,
+		},
+		{ size = UDim2.fromScale(side, 1), position = UDim2.fromScale(0, 0), rotation = 0 },
+		{ size = UDim2.fromScale(side, 1), position = UDim2.fromScale(1 - side, 0), rotation = 180 },
+	}
+	for i, band in bands do
+		local frame = Instance.new("Frame")
+		frame.Name = "Edge" .. i
+		frame.Size = band.size
+		frame.Position = band.position
+		frame.BorderSizePixel = 0
+		frame.BackgroundColor3 = WHITE
+		frame.BackgroundTransparency = 1
+		frame.Active = false
+		local gradient = Instance.new("UIGradient")
+		gradient.Rotation = band.rotation
+		gradient.Transparency = fade
+		gradient.Parent = frame
+		frame.Parent = gui
+		table.insert(vignetteFrames, frame)
+	end
+	gui.Parent = playerGui
+	vignetteGui = gui
 end
 
 -- Camera shake ---------------------------------------------------------------------------
@@ -223,6 +334,7 @@ function ConditionController.Init()
 	blur.Size = 0
 	blur.Enabled = false
 	blur.Parent = Lighting
+	task.spawn(buildVignette)
 end
 
 function ConditionController.Start()

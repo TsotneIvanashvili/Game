@@ -21,6 +21,8 @@ local ORDER = {
 	"ConditionController",
 	"PingController",
 	"SummaryController",
+	"FootprintController",
+	"AmbienceController",
 }
 
 type Controller = { Init: (() -> ())?, Start: (() -> ())? }

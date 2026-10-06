@@ -441,41 +441,33 @@ local function spawnStructure(player: Player, recipe: RecipeDefs.Recipe, frame: 
 		})
 		model.Parent = folder
 		local anchor = model.PrimaryPart :: BasePart
-		PromptUtil.create(
-			anchor,
-			{
-				action = "Sleep in tent",
-				object = "Tent",
-				key = Enum.KeyCode.E,
-				offset = Vector3.new(0, 1.5, 0),
-				distance = 8,
-			},
-			function(p)
-				Registry.get("SurvivalService").setResting(p, true)
+		PromptUtil.create(anchor, {
+			action = "Sleep in tent",
+			object = "Tent",
+			key = Enum.KeyCode.E,
+			offset = Vector3.new(0, 1.5, 0),
+			distance = 8,
+		}, function(p)
+			Registry.get("SurvivalService").setResting(p, true)
+		end)
+		PromptUtil.create(anchor, {
+			action = "Pack up tent",
+			object = "Tent",
+			key = Enum.KeyCode.F,
+			offset = Vector3.new(0, 3, 0),
+			hold = 2,
+			distance = 8,
+		}, function(p)
+			if not table.find(structures, s) then
+				return -- already packed by someone else
 			end
-		)
-		PromptUtil.create(
-			anchor,
-			{
-				action = "Pack up tent",
-				object = "Tent",
-				key = Enum.KeyCode.F,
-				offset = Vector3.new(0, 3, 0),
-				hold = 2,
-				distance = 8,
-			},
-			function(p)
-				if not table.find(structures, s) then
-					return -- already packed by someone else
-				end
-				if Registry.get("InventoryService").add(p, "tent_pack", 1) <= 0 then
-					remote().notify(p, "No room in your pack for the tent.", "warn")
-					return
-				end
-				removeStructure(s)
-				remote().notify(p, "You pack up the tent.", "good")
+			if Registry.get("InventoryService").add(p, "tent_pack", 1) <= 0 then
+				remote().notify(p, "No room in your pack for the tent.", "warn")
+				return
 			end
-		)
+			removeStructure(s)
+			remote().notify(p, "You pack up the tent.", "good")
+		end)
 		Registry.get("ProgressionService")
 			.achieve(player, "first_shelter", ProgressionConfig.XP.FirstShelter, "First emergency shelter")
 	elseif recipe.id == "wind_wall" then

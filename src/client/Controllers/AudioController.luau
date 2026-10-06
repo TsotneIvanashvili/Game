@@ -1,8 +1,9 @@
 --!strict
--- All game audio. Looped ambience (wind, rain/blizzard, fire) and body sounds (breathing,
+-- All game audio. Looped ambience (wind, snowfall/blizzard, fire) and body sounds (breathing,
 -- heartbeat, shivering) fade with the weather in ReplicatedStorage.WorldState and the
 -- Player attributes the server publishes; one-shots arrive through the PlaySound event
--- (key, optional world position) or from other controllers via AudioController.play.
+-- (key, optional world position), the Banner event (a sting for storm banners) or from other
+-- controllers via AudioController.play. The world is always snow: there is no rain audio.
 --
 -- Ids live in AudioConfig and are all "" until audio art supplies them. Any key with an
 -- empty id is skipped entirely, so no Sound objects exist for it.
@@ -14,7 +15,6 @@ local SoundService = game:GetService("SoundService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Remotes = require(Shared.Net.Remotes)
-local WeatherModel = require(Shared.Logic.WeatherModel)
 local AudioConfig = require(script.Parent.Parent.AudioConfig)
 
 local AudioController = {}
@@ -23,9 +23,12 @@ local player = Players.LocalPlayer
 
 local UPDATE_SECONDS = 0.25
 local FADE = 0.35 -- fraction of the gap closed per update
-local LOOP_KEYS = { "Wind", "Rain", "Blizzard", "FireCrackle", "HeavyBreathing", "Heartbeat", "Shivering" }
+local LOOP_KEYS = { "Wind", "Snowfall", "Blizzard", "FireCrackle", "HeavyBreathing", "Heartbeat", "Shivering" }
+local BANNER_STINGS: { [string]: string } = { storm = "StormBanner" }
 local SNOW_FLOORS: { [Enum.Material]: boolean } = {
 	[Enum.Material.Snow] = true,
+}
+local ICE_FLOORS: { [Enum.Material]: boolean } = {
 	[Enum.Material.Glacier] = true,
 	[Enum.Material.Ice] = true,
 }
@@ -138,13 +141,14 @@ local function updateLoops()
 		windMs = worldState:GetAttribute("WindMs") or 0
 		precip = worldState:GetAttribute("Precipitation") or 0
 	end
-	local tempC = attr("TempC", 10)
 	local shelter = if attr("InShelter", false) then 0.4 else 1
-	local snow = WeatherModel.isSnow(tempC)
 
+	-- Snowfall is the soft hiss of light-to-moderate snow; Blizzard takes over as wind and
+	-- precipitation build into a storm.
+	local storm = math.clamp(precip * math.clamp((windMs - 6) / 14, 0, 1), 0, 1)
 	setLoop("Wind", math.clamp(windMs / 20, 0, 1) * shelter)
-	setLoop("Rain", if snow then 0 else precip * shelter)
-	setLoop("Blizzard", if snow then precip * math.clamp(0.4 + windMs / 25, 0, 1) * shelter else 0)
+	setLoop("Snowfall", precip * (1 - storm) * shelter)
+	setLoop("Blizzard", storm * shelter)
 	setLoop("FireCrackle", if attr("NearFire", false) then 1 else 0)
 
 	local exertion = attr("Exertion", "idle")
@@ -189,6 +193,17 @@ function AudioController.Start()
 		AudioController.play(key, if typeof(position) == "Vector3" then position else nil)
 	end)
 
+	-- Stings for the big top-centre banner (HUD draws it; we only add the sound).
+	task.spawn(function()
+		local banner = Remotes.get("Banner") :: RemoteEvent
+		banner.OnClientEvent:Connect(function(_text: any, kind: any)
+			local key = if typeof(kind) == "string" then BANNER_STINGS[kind] else nil
+			if key then
+				AudioController.play(key)
+			end
+		end)
+	end)
+
 	local updateTimer = 0
 	local stepTimer = 0
 	RunService.Heartbeat:Connect(function(dt)
@@ -198,7 +213,7 @@ function AudioController.Start()
 			updateLoops()
 		end
 
-		-- Footsteps on snow/rock (local player only; teammates' steps would need replication).
+		-- Footsteps on snow/ice/rock (local player only; teammates' steps would need replication).
 		local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 		if not humanoid or humanoid.MoveDirection.Magnitude < 0.1 or attr("Climbing", false) then
 			stepTimer = 0
@@ -211,6 +226,9 @@ function AudioController.Start()
 			local floor = humanoid.FloorMaterial
 			if SNOW_FLOORS[floor] then
 				AudioController.play("SnowStep")
+			elseif ICE_FLOORS[floor] then
+				-- Falls back to the snow crunch until an ice step is supplied.
+				AudioController.play(if idFor("IceStep") ~= "" then "IceStep" else "SnowStep")
 			elseif ROCK_FLOORS[floor] then
 				AudioController.play("RockStep")
 			end
