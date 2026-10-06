@@ -27,7 +27,18 @@ local departed: { [number]: Stash } = {}
 local function onCharacter(player: Player, character: Model)
 	local humanoid = character:WaitForChild("Humanoid", 10) :: Humanoid?
 	local root = character:WaitForChild("HumanoidRootPart", 10) :: BasePart?
-	if not humanoid or not root or character.Parent == nil then
+	if not humanoid or not root then
+		return
+	end
+	-- Roblox can fire CharacterAdded BEFORE the character is parented to Workspace.
+	-- Bailing out here (as an earlier version did) silently skipped gear, death handling and
+	-- respawn-at-camp for every spawn. Wait for it to enter the world instead.
+	local deadline = os.clock() + 10
+	while not character:IsDescendantOf(workspace) and os.clock() < deadline do
+		task.wait(0.05) -- polling, not AncestryChanged:Wait(), so the deadline can't be skipped
+	end
+	if not character:IsDescendantOf(workspace) or player.Character ~= character then
+		warn("[PlayerService] character for " .. player.Name .. " never entered Workspace")
 		return
 	end
 	humanoid.UseJumpPower = false

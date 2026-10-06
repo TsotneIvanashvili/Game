@@ -50,6 +50,13 @@ local ClientToServer: { [string]: RemoteSpec } = {
 		burst = 3,
 	},
 	GetSnapshot = { kind = "Function", schema = {}, ratePerSecond = 2, burst = 4 },
+	-- Head-gear visibility toggles: Helmet | Mask | Goggles | Light.
+	GearToggle = {
+		kind = "Event",
+		schema = { Validate.oneOf({ "Helmet", "Mask", "Goggles", "Light" }), Validate.boolean() },
+		ratePerSecond = 4,
+		burst = 8,
+	},
 }
 
 -- Server -> client events (no schema: the server is trusted).
@@ -62,6 +69,7 @@ local ServerToClient = {
 	"CameraShake", -- (intensity, duration)
 	"ExpeditionSummary", -- (stats)
 	"PlaySound", -- (soundKey, position?)
+	"Banner", -- (text, kind) big orange pill at top centre: "storm", "checkpoint", "info"
 }
 
 local Remotes = {
