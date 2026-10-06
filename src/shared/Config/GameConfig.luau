@@ -22,6 +22,8 @@ local GameConfig = {
 	CRAWL_SPEED = 2,
 	CLIMB_SPEED = 6,
 	JUMP_HEIGHT = 6.5,
+	-- Steeper than this is Glacier/ice: you need ladders, bridges or the ice axe.
+	MAX_SLOPE_ANGLE = 42,
 
 	-- Interaction ranges (studs). Server re-validates every interaction against these.
 	INTERACT_RANGE = 12,

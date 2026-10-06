@@ -25,6 +25,11 @@ local ORDER = {
 	{ "PlayerService", Services.PlayerService },
 }
 
+-- No characters until the world exists: players joining during terrain generation would
+-- otherwise spawn over an empty map and fall. Spawning resumes once the build finishes.
+local Players = game:GetService("Players")
+Players.CharacterAutoLoads = false
+
 local started = os.clock()
 local built = WorldBuilder.build()
 print(
@@ -34,6 +39,18 @@ print(
 		os.clock() - started
 	)
 )
+
+-- Services are started below; then spawn everyone who joined while the world was building.
+local function releaseSpawns()
+	Players.CharacterAutoLoads = true
+	for _, player in Players:GetPlayers() do
+		if not player.Character then
+			task.spawn(function()
+				player:LoadCharacter()
+			end)
+		end
+	end
+end
 
 local loaded = {}
 for _, entry in ORDER do
@@ -52,6 +69,7 @@ for _, entry in loaded do
 	end
 end
 print(string.format("[Server] %d services started in %.2fs", #loaded, os.clock() - started))
+releaseSpawns()
 
 -- Startup report: one line the player can paste back so problems are visible without Studio
 -- access on our side. Zero of anything here means that part of the world failed to build.

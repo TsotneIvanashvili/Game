@@ -1,16 +1,18 @@
 --!strict
--- Greybox asset construction from primitive parts.
+-- Asset construction from primitive parts (no meshes or texture ids).
 --
--- These are NOT final art. They exist so every gameplay system has a physically sensible
--- stand-in at the right proportions, with real attachment points, until an artist delivers
--- meshes built to docs/ASSET_SPECS.md. Even in greybox we follow the realism rules:
+-- CHARACTER EQUIPMENT (backpack, harness, hipBelt, iceAxe, ropeCoil, tarpRoll, woodBundle) is
+-- built at the origin with real attachment points; EquipmentService positions and welds it:
 --   * proportions are character-relative (R15 torso ~2 x 1.6 x 1 studs, 1 stud ~ 0.28 m),
 --   * every component touches what it is attached to (straps reach the pack, the pick
 --     meets the shaft, tarp edges meet stakes),
---   * no perfectly uniform colours: each part gets slight colour jitter, bottoms are dirtier.
+--   * slight colour jitter so nothing looks perfectly uniform.
+--
+-- WORLD PROPS (campfire, tents, camp dressing, trees, rocks...) follow art direction v2
+-- (docs/ART_DIRECTION.md): stylized, bright and chunky. See the section header further down.
 --
 -- Swapping in real meshes: replace a builder's body with a clone of the artist's model, but
--- keep the same returned attachment names so EquipmentService/BuildingService keep working.
+-- keep the same returned attachment / child names so the services keep working.
 
 local AssetFactory = {}
 
@@ -571,8 +573,55 @@ function AssetFactory.woodBundle(count: number): Model
 end
 
 ---------------------------------------------------------------------------------------------
--- WORLD PROPS (anchored, built at a CFrame on the ground)
+-- WORLD PROPS (art direction v2, docs/ART_DIRECTION.md)
 ---------------------------------------------------------------------------------------------
+-- Every builder takes `at`, a CFrame standing on the ground; the prop's front (door, label,
+-- face) points along at.LookVector (local -Z). Look: bright saturated colours on SmoothPlastic,
+-- Fabric only for tent skins and carpets, Wood/WoodPlanks for crates and poles, Metal for
+-- rails. Big readable silhouettes first, detail second, nothing thinner than ~0.2 studs.
+-- Decorative parts never collide, query or touch; walls, floors, trunks and crates that players
+-- walk in or bump against collide. Only big shapes cast shadows.
+
+local PALETTE = {
+	snow = Color3.fromRGB(236, 242, 250),
+	snowCap = Color3.fromRGB(246, 249, 255),
+	ice = Color3.fromRGB(92, 205, 214),
+	yellow = Color3.fromRGB(245, 200, 40),
+	blue = Color3.fromRGB(40, 120, 220),
+	red = Color3.fromRGB(210, 45, 45),
+	purple = Color3.fromRGB(120, 60, 180),
+	orange = Color3.fromRGB(235, 110, 30),
+	rescue = Color3.fromRGB(235, 95, 35),
+	crate = Color3.fromRGB(214, 180, 120),
+	pole = Color3.fromRGB(120, 85, 55),
+	markerRed = Color3.fromRGB(220, 40, 40),
+	white = Color3.fromRGB(245, 245, 245),
+	green = Color3.fromRGB(40, 220, 60),
+	navy = Color3.fromRGB(0, 70, 140),
+	uiBlue = Color3.fromRGB(0, 110, 200),
+	cyan = Color3.fromRGB(0, 230, 255),
+	stone = Color3.fromRGB(132, 138, 148),
+	stoneDark = Color3.fromRGB(108, 114, 126),
+	pine = Color3.fromRGB(38, 128, 84),
+	trunk = Color3.fromRGB(122, 80, 48),
+	log = Color3.fromRGB(150, 98, 56),
+	char = Color3.fromRGB(38, 30, 28),
+	metal = Color3.fromRGB(150, 156, 166),
+	dark = Color3.fromRGB(36, 38, 46),
+	window = Color3.fromRGB(44, 62, 96),
+	glass = Color3.fromRGB(120, 225, 245),
+	rope = Color3.fromRGB(240, 238, 230),
+	ember = Color3.fromRGB(255, 120, 30),
+	warmLight = Color3.fromRGB(255, 196, 120),
+}
+AssetFactory.Palette = PALETTE
+
+type Opts = {
+	collide: boolean?, -- walls/floors/trunks: true; anything decorative: leave nil
+	shadow: boolean?, -- default: only shapes 4+ studs across cast shadows
+	transparency: number?,
+	shape: Enum.PartType?,
+}
 
 local function newModel(name: string): Model
 	local m = Instance.new("Model")
@@ -580,111 +629,386 @@ local function newModel(name: string): Model
 	return m
 end
 
--- Campfire: stone ring, teepee of three barked logs with charred tips, ember bed, flame.
+local function shade(p: BasePart, opts: Opts?)
+	if opts and opts.shadow ~= nil then
+		p.CastShadow = opts.shadow
+	else
+		p.CastShadow = math.max(p.Size.X, p.Size.Y, p.Size.Z) >= 4
+	end
+end
+
+local function block(
+	parent: Instance,
+	name: string,
+	size: Vector3,
+	cf: CFrame,
+	color: Color3,
+	mat: Enum.Material?,
+	opts: Opts?
+): Part
+	local p = part(parent, {
+		name = name,
+		size = size,
+		cframe = cf,
+		color = color,
+		material = mat,
+		shape = opts and opts.shape,
+		transparency = opts and opts.transparency,
+		collide = opts and opts.collide,
+	})
+	shade(p, opts)
+	return p
+end
+
+local function wedge(
+	parent: Instance,
+	name: string,
+	size: Vector3,
+	cf: CFrame,
+	color: Color3,
+	mat: Enum.Material?,
+	opts: Opts?
+): WedgePart
+	local w = Instance.new("WedgePart")
+	w.Name = name
+	w.Size = size
+	w.CFrame = cf
+	w.Color = color
+	w.Material = mat or Enum.Material.SmoothPlastic
+	w.Transparency = opts and opts.transparency or 0
+	local collide = opts ~= nil and opts.collide == true
+	w.CanCollide = collide
+	w.CanQuery = collide
+	w.CanTouch = false
+	w.Anchored = true
+	w.TopSurface = Enum.SurfaceType.Smooth
+	w.BottomSurface = Enum.SurfaceType.Smooth
+	shade(w, opts)
+	w.Parent = parent
+	return w
+end
+
+-- Cylinder from world point a to world point b.
+local function rod(
+	parent: Instance,
+	name: string,
+	a: Vector3,
+	b: Vector3,
+	diameter: number,
+	color: Color3,
+	mat: Enum.Material?,
+	opts: Opts?
+): Part
+	local p = cylinderBetween(parent, a, b, diameter, {
+		name = name,
+		color = color,
+		material = mat or Enum.Material.SmoothPlastic,
+		collide = opts and opts.collide,
+	})
+	if opts and opts.transparency then
+		p.Transparency = opts.transparency
+	end
+	shade(p, opts)
+	return p
+end
+
+-- Ellipsoid filling `size` (a block with a built-in Sphere SpecialMesh; no asset id).
+-- Collision, if any, is the block's box.
+local function blob(
+	parent: Instance,
+	name: string,
+	size: Vector3,
+	cf: CFrame,
+	color: Color3,
+	mat: Enum.Material?,
+	opts: Opts?
+): (Part, SpecialMesh)
+	local p = block(parent, name, size, cf, color, mat, opts)
+	local mesh = Instance.new("SpecialMesh")
+	mesh.MeshType = Enum.MeshType.Sphere
+	mesh.Parent = p
+	return p, mesh
+end
+
+-- Makes `p` the model's PrimaryPart with the model pivot at `pivot` (cylinders are rotated so
+-- their axis runs along X; this keeps GetPivot()/PivotTo() upright).
+local function setPrimary(model: Model, p: BasePart, pivot: CFrame)
+	model.PrimaryPart = p
+	p.PivotOffset = p.CFrame:ToObjectSpace(pivot)
+end
+
+-- Right-triangle wedge standing on the origin of `base`: its tall vertical edge is on the
+-- base origin and its slope runs down along `dir` (a horizontal unit vector in base space),
+-- `reach` studs out, `height` tall, `width` thick. Roblox WedgeParts slope down toward their
+-- local -Z (front) face, so local -Z is aligned with `dir`.
+local function fin(
+	parent: Instance,
+	name: string,
+	base: CFrame,
+	dir: Vector3,
+	reach: number,
+	height: number,
+	width: number,
+	color: Color3,
+	mat: Enum.Material?,
+	opts: Opts?
+): WedgePart
+	local pos = dir * (reach / 2) + Vector3.new(0, height / 2, 0)
+	local right = dir:Cross(Vector3.yAxis)
+	return wedge(
+		parent,
+		name,
+		Vector3.new(width, height, reach),
+		base * CFrame.fromMatrix(pos, right, Vector3.yAxis),
+		color,
+		mat,
+		opts
+	)
+end
+
+-- Isosceles gable wall (two fins back to back) in base's XY plane, `width` wide at the bottom.
+local function gable(
+	parent: Instance,
+	name: string,
+	base: CFrame,
+	width: number,
+	height: number,
+	thick: number,
+	color: Color3,
+	mat: Enum.Material?,
+	opts: Opts?
+)
+	fin(parent, name, base, Vector3.xAxis, width / 2, height, thick, color, mat, opts)
+	fin(parent, name, base, -Vector3.xAxis, width / 2, height, thick, color, mat, opts)
+end
+
+-- Rectangular slab whose centre line runs from a to b (points in base space), `width` wide
+-- along `across`, `thick` deep, pushed `lift` studs along its face normal; the normal is
+-- flipped to agree with `outward`.
+local function slab(
+	parent: Instance,
+	name: string,
+	base: CFrame,
+	a: Vector3,
+	b: Vector3,
+	across: Vector3,
+	width: number,
+	thick: number,
+	lift: number,
+	outward: Vector3,
+	color: Color3,
+	mat: Enum.Material?,
+	opts: Opts?
+): Part
+	local along = (b - a).Unit
+	local side = (across - along * across:Dot(along)).Unit
+	local up = side:Cross(along)
+	if up:Dot(outward) < 0 then
+		up = -up
+	end
+	local centre = (a + b) / 2 + up * lift
+	return block(
+		parent,
+		name,
+		Vector3.new((b - a).Magnitude, thick, width),
+		base * CFrame.fromMatrix(centre, along, up),
+		color,
+		mat,
+		opts
+	)
+end
+
+local function surfaceText(p: BasePart, face: Enum.NormalId, text: string, color: Color3): SurfaceGui
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = "Label" .. face.Name
+	gui.Face = face
+	gui.LightInfluence = 0
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 40
+	gui.Parent = p
+	local label = Instance.new("TextLabel")
+	label.Name = "Text"
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.fromScale(0.92, 0.78)
+	label.Position = UDim2.fromScale(0.04, 0.11)
+	label.Font = Enum.Font.FredokaOne
+	label.Text = text
+	label.TextColor3 = color
+	label.TextScaled = true
+	label.Parent = gui
+	return gui
+end
+
+-- Floating text label (BillboardGui) sized in studs so it reads as part of the world.
+function AssetFactory.billboard(
+	adornee: BasePart,
+	text: string,
+	color: Color3,
+	stroke: Color3,
+	sizeStuds: Vector2,
+	offsetY: number,
+	maxDistance: number
+): BillboardGui
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "Label"
+	gui.Size = UDim2.new(sizeStuds.X, 0, sizeStuds.Y, 0)
+	gui.StudsOffsetWorldSpace = Vector3.new(0, offsetY, 0)
+	gui.MaxDistance = maxDistance
+	gui.LightInfluence = 0
+	gui.AlwaysOnTop = false
+	gui.Parent = adornee
+	local label = Instance.new("TextLabel")
+	label.Name = "Text"
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.fromScale(1, 1)
+	label.Font = Enum.Font.FredokaOne
+	label.Text = text
+	label.TextColor3 = color
+	label.TextStrokeColor3 = stroke
+	label.TextStrokeTransparency = 0
+	label.TextScaled = true
+	label.Parent = gui
+	return gui
+end
+
+local function stake(parent: Instance, pos: Vector3)
+	block(
+		parent,
+		"Stake",
+		Vector3.new(0.3, 1, 0.3),
+		CFrame.new(pos + Vector3.new(0, 0.1, 0)),
+		PALETTE.metal,
+		Enum.Material.Metal,
+		{ shadow = false }
+	)
+end
+
+local function guyLine(parent: Instance, from: Vector3, to: Vector3)
+	rod(parent, "GuyLine", from, to + Vector3.new(0, 0.45, 0), 0.12, PALETTE.rope, nil, { shadow = false })
+	stake(parent, to)
+end
+
+---------------------------------------------------------------------------------------------
+-- Campfire: the social centre. Stone ring, chunky log teepee with charred tips, glowing ember
+-- mound, two layered flames, rising sparks, a warm light and a wisp of smoke. The child part
+-- "Embers" hosts the effects and BuildingService's prompts; extinguishing destroys its Fire and
+-- PointLight children, which also switches the sparks off here.
 function AssetFactory.campfire(at: CFrame): Model
 	local model = newModel("Campfire")
-	local base = part(model, {
-		name = "Base",
-		size = Vector3.new(3.6, 0.2, 3.6),
-		cframe = at * CFrame.new(0, 0.1, 0),
-		color = Color3.fromRGB(40, 36, 34),
-		material = Enum.Material.Ground,
-	})
+	local base =
+		blob(model, "Base", Vector3.new(4.6, 0.36, 4.6), at, Color3.fromRGB(84, 76, 72), nil, { shadow = false })
 	model.PrimaryPart = base
-	for i = 0, 8 do
-		local a = i / 9 * math.pi * 2
-		part(model, {
-			name = "RingStone",
-			size = Vector3.new(0.7 + rng:NextNumber(0, 0.3), 0.45 + rng:NextNumber(0, 0.2), 0.55),
-			cframe = at
-				* CFrame.new(math.cos(a) * 1.75, 0.3, math.sin(a) * 1.75)
-				* CFrame.Angles(rng:NextNumber(-0.2, 0.2), -a, rng:NextNumber(-0.2, 0.2)),
-			color = jitter(Color3.fromRGB(105, 102, 98), 0.08),
-			material = Enum.Material.Slate,
+	for i = 0, 9 do
+		local a = i / 10 * math.pi * 2
+		local w = 1.0 + rng:NextNumber(0, 0.3)
+		local h = 0.75 + rng:NextNumber(0, 0.3)
+		block(
+			model,
+			"RingStone",
+			Vector3.new(w, h, 0.95),
+			at
+				* CFrame.new(math.cos(a) * 2.2, h / 2 - 0.1, math.sin(a) * 2.2)
+				* CFrame.Angles(0, math.pi / 2 - a, rng:NextNumber(-0.1, 0.1)),
+			jitter(PALETTE.stone, 0.05),
+			nil,
+			{ shadow = false }
+		)
+	end
+	local apex = (at * CFrame.new(0, 3.3, 0)).Position
+	for i = 0, 4 do
+		local a = i / 5 * math.pi * 2 + 0.4
+		local foot = (at * CFrame.new(math.cos(a) * 1.5, 0.15, math.sin(a) * 1.5)).Position
+		rod(model, "Log", foot, apex:Lerp(foot, 0.22), 0.58, jitter(PALETTE.log, 0.04), Enum.Material.Wood, {
+			shadow = true,
+		})
+		rod(model, "Char", apex:Lerp(foot, 0.22), apex:Lerp(foot, 0.06), 0.6, PALETTE.char, Enum.Material.Wood, {
+			shadow = false,
 		})
 	end
-	local apex = (at * CFrame.new(0, 2.1, 0)).Position
-	for i = 0, 2 do
-		local a = i / 3 * math.pi * 2 + 0.3
-		local foot = (at * CFrame.new(math.cos(a) * 1.15, 0.25, math.sin(a) * 1.15)).Position
-		local log = cylinderBetween(model, foot, apex:Lerp(foot, 0.15), 0.32, {
-			name = "Log",
-			color = jitter(Color3.fromRGB(95, 68, 45), 0.05),
-			material = Enum.Material.Wood,
-		})
-		log.Anchored = true
-		-- Charred upper end where the flame licks the wood.
-		cylinderBetween(model, apex:Lerp(foot, 0.15), apex:Lerp(foot, 0.4), 0.33, {
-			name = "Char",
-			color = Color3.fromRGB(28, 24, 22),
-			material = Enum.Material.Wood,
-		})
-	end
-	local embers = part(model, {
-		name = "Embers",
-		size = Vector3.new(1.6, 0.12, 1.6),
-		cframe = at * CFrame.new(0, 0.26, 0),
-		color = Color3.fromRGB(255, 120, 40),
-		material = Enum.Material.Neon,
-		transparency = 0.25,
-	})
+	local embers = blob(
+		model,
+		"Embers",
+		Vector3.new(2.6, 0.8, 2.6),
+		at * CFrame.new(0, 0.12, 0),
+		PALETTE.ember,
+		Enum.Material.Neon,
+		{ shadow = false }
+	)
 	local flame = Instance.new("Fire")
-	flame.Size = 6
-	flame.Heat = 9
-	flame.Color = Color3.fromRGB(255, 140, 50)
-	flame.SecondaryColor = Color3.fromRGB(255, 60, 20)
+	flame.Name = "Flame"
+	flame.Size = 8
+	flame.Heat = 12
+	flame.Color = Color3.fromRGB(255, 150, 40)
+	flame.SecondaryColor = Color3.fromRGB(255, 70, 15)
 	flame.Parent = embers
+	local flicker = Instance.new("Fire")
+	flicker.Name = "Flicker"
+	flicker.Size = 4
+	flicker.Heat = 20
+	flicker.Color = Color3.fromRGB(255, 215, 90)
+	flicker.SecondaryColor = Color3.fromRGB(255, 120, 25)
+	flicker.Parent = embers
+	local sparks = Instance.new("ParticleEmitter")
+	sparks.Name = "Sparks"
+	sparks.Color = ColorSequence.new(Color3.fromRGB(255, 210, 90), Color3.fromRGB(255, 90, 20))
+	sparks.LightEmission = 1
+	sparks.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.22), NumberSequenceKeypoint.new(1, 0) })
+	sparks.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 0.5) })
+	sparks.Lifetime = NumberRange.new(1.2, 2.4)
+	sparks.Rate = 14
+	sparks.Speed = NumberRange.new(5, 9)
+	sparks.SpreadAngle = Vector2.new(22, 22)
+	sparks.Acceleration = Vector3.new(0, 1.5, 0)
+	sparks.Drag = 1.2
+	sparks.EmissionDirection = Enum.NormalId.Top
+	sparks.Parent = embers
 	local smoke = Instance.new("Smoke")
-	smoke.Opacity = 0.08
-	smoke.RiseVelocity = 4
-	smoke.Size = 3
-	smoke.Color = Color3.fromRGB(90, 90, 90)
+	smoke.Opacity = 0.05
+	smoke.RiseVelocity = 7
+	smoke.Size = 5
+	smoke.Color = Color3.fromRGB(205, 205, 210)
 	smoke.Parent = embers
 	local light = Instance.new("PointLight")
-	light.Brightness = 2.5
-	light.Range = 22
-	light.Color = Color3.fromRGB(255, 160, 80)
+	light.Brightness = 3
+	light.Range = 28
+	light.Color = Color3.fromRGB(255, 170, 90)
 	light.Shadows = true
 	light.Parent = embers
+	-- When the fire goes out (BuildingService destroys the Fire children) stop the sparks too.
+	embers.ChildRemoved:Connect(function(child)
+		if child:IsA("Fire") then
+			sparks.Enabled = false
+		end
+	end)
 	return model
 end
 
--- A-frame tarp shelter: two forked poles, a ridge line, a tarp pitched as two pairs of
--- panels (each pair dips slightly toward the middle: the fabric sags between supports),
--- staked corners and guy lines running from the pole tops to stakes beyond each end.
+-- A-frame tarp shelter (player-built): two poles, a ridge line, a bright tarp pitched as two
+-- pairs of panels sagging slightly between supports, staked edges and guy lines. BuildingService
+-- relies on PrimaryPart "Floor" and the "RoofSnow" parts (faded in during snowfall); its
+-- interior box (6.6 x 5.2 x 9) matches these dimensions.
 function AssetFactory.tarpShelter(at: CFrame): Model
 	local model = newModel("TarpShelter")
 	local length, halfWidth, ridge = 9, 3.6, 5.2
-	local floor = part(model, {
-		name = "Floor",
-		size = Vector3.new(halfWidth * 2, 0.15, length),
-		cframe = at * CFrame.new(0, 0.08, 0),
-		color = Color3.fromRGB(70, 60, 50),
-		material = Enum.Material.Ground,
-	})
+	local floor = block(
+		model,
+		"Floor",
+		Vector3.new(halfWidth * 2, 0.2, length),
+		at * CFrame.new(0, 0.1, 0),
+		Color3.fromRGB(60, 84, 120),
+		Enum.Material.Fabric,
+		{ shadow = false }
+	)
 	model.PrimaryPart = floor
-	local tarpColor = Color3.fromRGB(60, 110, 70)
+	local tarpColor = PALETTE.orange
 	local poleTops = {}
 	for _, z in { -length / 2, length / 2 } do
-		local bottom = (at * CFrame.new(0, 0, z)).Position
-		local topPos = (at * CFrame.new(0, ridge + 0.3, z)).Position
-		cylinderBetween(
-			model,
-			bottom,
-			topPos,
-			0.22,
-			{ name = "Pole", color = jitter(Color3.fromRGB(110, 80, 55)), material = Enum.Material.Wood }
-		)
+		local bottom = (at * CFrame.new(0, -0.3, z)).Position
+		local topPos = (at * CFrame.new(0, ridge + 0.5, z)).Position
+		rod(model, "Pole", bottom, topPos, 0.36, PALETTE.pole, Enum.Material.Wood, { shadow = true })
 		table.insert(poleTops, topPos)
 	end
-	-- Ridge line (rope) between the pole tops.
-	cylinderBetween(
-		model,
-		poleTops[1],
-		poleTops[2],
-		0.07,
-		{ name = "RidgeLine", color = Color3.fromRGB(220, 110, 40), material = Enum.Material.Fabric }
-	)
+	rod(model, "RidgeLine", poleTops[1], poleTops[2], 0.16, PALETTE.rope, nil, { shadow = false })
 	-- Tarp panels: for each side, two panels from the ridge to the ground edge.
 	local sag = 0.25
 	for _, side in { -1, 1 } do
@@ -700,473 +1024,2090 @@ function AssetFactory.tarpShelter(at: CFrame): Model
 			local along = (ridgeEnd - ridgeMid).Unit
 			local down = (groundCentre - ridgeCentre).Unit
 			local normal = along:Cross(down).Unit
-			local cf = CFrame.fromMatrix(centre, along, normal)
-			part(model, {
-				name = "TarpPanel",
-				size = Vector3.new(length / 2, 0.06, slopeLength + 0.05),
-				cframe = cf,
-				color = jitter(tarpColor, 0.03),
-				material = Enum.Material.Fabric,
-				collide = true,
-			})
+			block(
+				model,
+				"TarpPanel",
+				Vector3.new(length / 2 + 0.05, 0.22, slopeLength + 0.1),
+				CFrame.fromMatrix(centre, along, normal),
+				jitter(tarpColor, 0.02),
+				Enum.Material.Fabric,
+				{ collide = true, shadow = true }
+			)
 		end
-		-- Corner stakes and a reinforced grommet at each ground corner.
 		for _, z in { -length / 2, 0, length / 2 } do
-			local stakePos = (at * CFrame.new(side * (halfWidth + 0.1), 0.2, z)).Position
-			part(model, {
-				name = "Stake",
-				size = Vector3.new(0.08, 0.6, 0.08),
-				cframe = CFrame.new(stakePos) * CFrame.Angles(0, 0, math.rad(side * 15)),
-				color = Color3.fromRGB(170, 170, 175),
-				material = Enum.Material.Metal,
-			})
+			stake(model, (at * CFrame.new(side * (halfWidth + 0.15), 0, z)).Position)
 		end
 	end
-	-- Guy lines from pole tops to stakes 2.5 studs beyond each end.
-	for i, z in { -length / 2 - 2.5, length / 2 + 2.5 } do
-		local stake = (at * CFrame.new(0, 0.2, z)).Position
-		part(model, {
-			name = "GuyStake",
-			size = Vector3.new(0.08, 0.6, 0.08),
-			cframe = CFrame.new(stake),
-			color = Color3.fromRGB(170, 170, 175),
-			material = Enum.Material.Metal,
-		})
-		cylinderBetween(
-			model,
-			poleTops[i],
-			stake,
-			0.05,
-			{ name = "GuyLine", color = Color3.fromRGB(220, 110, 40), material = Enum.Material.Fabric }
-		)
+	for i, z in { -length / 2 - 2.8, length / 2 + 2.8 } do
+		guyLine(model, poleTops[i], (at * CFrame.new(0, 0, z)).Position)
 	end
 	-- Snow that accumulates on the roof during snowfall (faded in by BuildingService).
 	for _, side in { -1, 1 } do
 		local cf = at * CFrame.new(side * halfWidth * 0.5, ridge * 0.55, 0) * CFrame.Angles(0, 0, math.rad(side * -55))
-		part(model, {
-			name = "RoofSnow",
-			size = Vector3.new(halfWidth * 1.15, 0.08, length * 0.95),
-			cframe = cf * CFrame.new(0, 0.08, 0),
-			color = Color3.fromRGB(240, 244, 250),
-			material = Enum.Material.Snow,
-			transparency = 1,
-		})
+		block(
+			model,
+			"RoofSnow",
+			Vector3.new(halfWidth * 1.15, 0.25, length * 0.95),
+			cf * CFrame.new(0, 0.2, 0),
+			PALETTE.snowCap,
+			nil,
+			{ transparency = 1, shadow = false }
+		)
 	end
 	return model
 end
 
--- Wind wall: stacked logs between two driven posts.
+-- Wind wall: chunky stacked logs between two driven posts, a drift of snow along the top.
 function AssetFactory.windWall(at: CFrame): Model
 	local model = newModel("WindWall")
 	local width, height = 11, 5
-	local base = part(model, {
-		name = "Base",
-		size = Vector3.new(width, 0.2, 1.2),
-		cframe = at * CFrame.new(0, 0.1, 0),
-		color = Color3.fromRGB(70, 60, 50),
-		material = Enum.Material.Ground,
-	})
+	local base = block(
+		model,
+		"Base",
+		Vector3.new(width + 0.6, 0.5, 1.8),
+		at * CFrame.new(0, 0.05, 0),
+		PALETTE.snow,
+		nil,
+		{ shadow = false }
+	)
 	model.PrimaryPart = base
 	for _, x in { -width / 2, width / 2 } do
-		cylinderBetween(
+		rod(
 			model,
+			"Post",
 			(at * CFrame.new(x, -0.5, 0)).Position,
-			(at * CFrame.new(x, height + 0.4, 0)).Position,
-			0.3,
-			{
-				name = "Post",
-				color = jitter(Color3.fromRGB(100, 72, 48)),
-				material = Enum.Material.Wood,
-				collide = true,
-			}
+			(at * CFrame.new(x, height + 0.6, 0)).Position,
+			0.5,
+			darker(PALETTE.log, 0.8),
+			Enum.Material.Wood,
+			{ collide = true }
 		)
 	end
-	local rows = 7
+	local rows = 6
 	for i = 0, rows - 1 do
-		local y = 0.35 + i * (height / rows)
-		local z = if i % 2 == 0 then -0.15 else 0.15
-		cylinderBetween(
+		local y = 0.42 + i * (height / rows)
+		local z = if i % 2 == 0 then -0.12 else 0.12
+		rod(
 			model,
-			(at * CFrame.new(-width / 2 + 0.2, y, z)).Position,
-			(at * CFrame.new(width / 2 - 0.2, y, z)).Position,
-			0.62,
-			{
-				name = "Log",
-				color = jitter(Color3.fromRGB(105, 76, 50), 0.06),
-				material = Enum.Material.Wood,
-				collide = true,
-			}
+			"Log",
+			(at * CFrame.new(-width / 2 + 0.1, y, z)).Position,
+			(at * CFrame.new(width / 2 - 0.1, y, z)).Position,
+			0.84,
+			jitter(PALETTE.log, 0.05),
+			Enum.Material.Wood,
+			{ collide = true }
 		)
 	end
+	blob(
+		model,
+		"SnowCap",
+		Vector3.new(width * 0.95, 0.6, 1.1),
+		at * CFrame.new(0, 0.42 + (rows - 1) * (height / rows) + 0.4, 0),
+		PALETTE.snowCap,
+		nil,
+		{ shadow = false }
+	)
 	return model
 end
 
--- Trail marker: a wooden stake with a bright flag that glows enough to read in fog.
+-- Route marker: red/white striped pole with a small red flag (PointLight so it reads in fog).
 function AssetFactory.trailMarker(at: CFrame): Model
 	local model = newModel("TrailMarker")
-	local stake =
-		cylinderBetween(model, (at * CFrame.new(0, -0.6, 0)).Position, (at * CFrame.new(0, 5.6, 0)).Position, 0.22, {
-			name = "Stake",
-			color = jitter(Color3.fromRGB(120, 88, 58)),
-			material = Enum.Material.Wood,
-			collide = true,
-		})
-	model.PrimaryPart = stake
-	local flag = part(model, {
-		name = "Flag",
-		size = Vector3.new(0.04, 0.8, 1.2),
-		cframe = at * CFrame.new(0, 5.0, 0.6),
-		color = Color3.fromRGB(255, 120, 20),
-		material = Enum.Material.Fabric, -- the PointLight and billboard make it visible in fog
-	})
+	local stake = rod(
+		model,
+		"Stake",
+		(at * CFrame.new(0, -0.6, 0)).Position,
+		(at * CFrame.new(0, 5.6, 0)).Position,
+		0.3,
+		PALETTE.white,
+		nil,
+		{ collide = true, shadow = false }
+	)
+	setPrimary(model, stake, at)
+	for i = 0, 2 do
+		local y0 = 0.5 + i * 1.6
+		rod(
+			model,
+			"Stripe",
+			(at * CFrame.new(0, y0, 0)).Position,
+			(at * CFrame.new(0, y0 + 0.8, 0)).Position,
+			0.34,
+			PALETTE.markerRed,
+			nil,
+			{ shadow = false }
+		)
+	end
+	local flag = block(
+		model,
+		"Flag",
+		Vector3.new(0.12, 0.9, 1.3),
+		at * CFrame.new(0, 5.05, 0.8),
+		PALETTE.markerRed,
+		Enum.Material.Fabric,
+		{ shadow = false }
+	)
 	local light = Instance.new("PointLight")
 	light.Range = 10
 	light.Brightness = 1
-	light.Color = Color3.fromRGB(255, 140, 60)
+	light.Color = Color3.fromRGB(255, 120, 90)
 	light.Parent = flag
 	return model
 end
 
--- Pine with a tapering barked trunk and stacked boughs. `snowy` adds snow on each bough.
+-- Stylized snowy pine: 3-4 stacked "cones", each a ring of five sloped wedge boughs; when snowy
+-- every bough carries a thick snow layer (green sides and tips still show) and the top a cap.
+-- About 32 parts snowy, 17 bare.
 function AssetFactory.pineTree(at: CFrame, height: number, snowy: boolean, seed: number): Model
 	local r = Random.new(seed)
 	local model = newModel("Pine")
-	local trunkD = height * 0.05
-	local trunk = cylinderBetween(
+	local h = math.max(height, 6)
+	local trunk = rod(
 		model,
+		"Trunk",
 		(at * CFrame.new(0, -1, 0)).Position,
-		(at * CFrame.new(0, height * 0.9, 0)).Position,
-		trunkD,
-		{
-			name = "Trunk",
-			color = jitter(Color3.fromRGB(88, 62, 44), 0.06),
-			material = Enum.Material.Wood,
-			collide = true,
-		}
+		(at * CFrame.new(0, h * 0.5, 0)).Position,
+		math.max(0.8, h * 0.07),
+		jitter(PALETTE.trunk, 0.04),
+		Enum.Material.Wood,
+		{ collide = true }
 	)
-	model.PrimaryPart = trunk
-	-- Root flare.
-	part(model, {
-		name = "RootFlare",
-		size = Vector3.new(trunkD * 1.8, 0.8, trunkD * 1.8),
-		cframe = at * CFrame.new(0, 0.2, 0) * CFrame.Angles(0, r:NextNumber(0, math.pi), 0),
-		color = jitter(Color3.fromRGB(80, 58, 42), 0.05),
-		material = Enum.Material.Wood,
-	})
-	local layers = 5
-	local needle = jitter(Color3.fromRGB(46, 76, 52), 0.05)
-	for i = 0, layers - 1 do
-		local t = i / layers
-		local y = height * (0.28 + t * 0.62)
-		local w = height * (0.42 - t * 0.33)
-		local th = height * 0.11
-		local yaw = r:NextNumber(0, math.pi / 2)
-		part(model, {
-			name = "Bough",
-			size = Vector3.new(w, th, w),
-			cframe = at * CFrame.new(0, y, 0) * CFrame.Angles(0, yaw, 0),
-			color = jitter(needle, 0.04),
-			material = Enum.Material.Grass,
-		})
-		if snowy then
-			part(model, {
-				name = "BoughSnow",
-				size = Vector3.new(w * 0.8, th * 0.25, w * 0.8),
-				cframe = at * CFrame.new(0, y + th * 0.6, 0) * CFrame.Angles(0, yaw, 0),
-				color = Color3.fromRGB(238, 242, 248),
-				material = Enum.Material.Snow,
+	setPrimary(model, trunk, at)
+	local tiers = if h >= 26 then 4 else 3
+	local foliageBase = h * 0.16
+	local tierH = (h - foliageBase) * (if tiers == 4 then 0.4 else 0.48)
+	local step = (h - foliageBase - tierH) / (tiers - 1)
+	local yaw0 = r:NextNumber(0, math.pi * 2)
+	local green = jitter(PALETTE.pine, 0.04)
+	-- Snow layer on each bough: a similar wedge 88% the size, lifted so its slope runs parallel
+	-- to the bough's, `snowDepth` above it; the bough's green sides and tip still show.
+	local snowDepth = math.clamp(h * 0.018, 0.25, 0.5)
+	for i = 0, tiers - 1 do
+		local t = i / (tiers - 1)
+		local reach = h * (0.3 - 0.15 * t)
+		local base = at * CFrame.new(0, foliageBase + i * step, 0)
+		for k = 0, 4 do
+			local a = yaw0 + i * 0.63 + k / 5 * math.pi * 2
+			local dir = Vector3.new(math.cos(a), 0, math.sin(a))
+			fin(model, "Bough", base, dir, reach, tierH, reach * 0.8, darker(green, 0.84 + 0.16 * t), nil, {
+				shadow = true,
 			})
+			if snowy then
+				fin(
+					model,
+					"Snow",
+					base * CFrame.new(0, tierH * 0.12 + snowDepth, 0),
+					dir,
+					reach * 0.88,
+					tierH * 0.88,
+					reach * 0.62,
+					PALETTE.snowCap,
+					nil,
+					{ shadow = false }
+				)
+			end
+		end
+		if i == tiers - 1 then
+			blob(
+				model,
+				if snowy then "SnowTip" else "Tip",
+				Vector3.new(reach * 0.6, tierH * 0.4, reach * 0.6),
+				base * CFrame.new(0, tierH + (if snowy then snowDepth else 0), 0),
+				if snowy then PALETTE.snowCap else green,
+				nil,
+				{ shadow = false }
+			)
 		end
 	end
-	-- One dead broken branch stub low on the trunk.
-	local a = r:NextNumber(0, math.pi * 2)
-	cylinderBetween(
-		model,
-		(at * CFrame.new(0, height * 0.18, 0)).Position,
-		(at * CFrame.new(math.cos(a) * height * 0.08, height * 0.2, math.sin(a) * height * 0.08)).Position,
-		trunkD * 0.25,
-		{
-			name = "DeadBranch",
-			color = Color3.fromRGB(70, 58, 48),
-			material = Enum.Material.Wood,
-		}
-	)
 	return model
 end
 
--- Rock cluster from 2-4 fractured blocks, rotated and scaled so no two are identical.
+-- Chunky grey rock cluster (2-3 blocks) with rounded snow pillows on top when snowy.
 function AssetFactory.rock(at: CFrame, size: number, snowy: boolean, seed: number): Model
 	local r = Random.new(seed)
 	local model = newModel("Rock")
-	local base = Color3.fromRGB(110, 108, 104)
-	local mats = { Enum.Material.Rock, Enum.Material.Slate, Enum.Material.Rock }
 	local first: Part? = nil
-	for i = 1, r:NextInteger(2, 4) do
-		local s = size * r:NextNumber(0.45, 1)
-		local p = part(model, {
-			name = "Fragment",
-			size = Vector3.new(s * r:NextNumber(0.8, 1.4), s * r:NextNumber(0.5, 0.9), s * r:NextNumber(0.8, 1.3)),
-			cframe = at
-				* CFrame.new(r:NextNumber(-size, size) * 0.4, s * 0.25, r:NextNumber(-size, size) * 0.4)
-				* CFrame.Angles(r:NextNumber(-0.4, 0.4), r:NextNumber(0, math.pi), r:NextNumber(-0.4, 0.4)),
-			color = jitter(base, 0.08),
-			material = mats[(i - 1) % #mats + 1],
-			collide = true,
-		})
+	for i = 1, r:NextInteger(2, 3) do
+		local s = size * (if i == 1 then 1 else r:NextNumber(0.45, 0.75))
+		local sz = Vector3.new(s * r:NextNumber(0.95, 1.3), s * r:NextNumber(0.6, 0.85), s * r:NextNumber(0.85, 1.15))
+		local off = if i == 1
+			then Vector3.zero
+			else Vector3.new(r:NextNumber(-0.55, 0.55) * size, 0, r:NextNumber(-0.55, 0.55) * size)
+		local cf = at
+			* CFrame.new(off.X, sz.Y * 0.35, off.Z)
+			* CFrame.Angles(r:NextNumber(-0.1, 0.1), r:NextNumber(0, math.pi), r:NextNumber(-0.1, 0.1))
+		local p = block(
+			model,
+			"Fragment",
+			sz,
+			cf,
+			jitter(if i == 1 then PALETTE.stone else PALETTE.stoneDark, 0.04),
+			nil,
+			{ collide = true }
+		)
 		first = first or p
 		if snowy then
-			part(model, {
-				name = "Snow",
-				size = Vector3.new(p.Size.X * 0.85, 0.2, p.Size.Z * 0.85),
-				cframe = p.CFrame * CFrame.new(0, p.Size.Y / 2 + 0.05, 0),
-				color = Color3.fromRGB(238, 242, 248),
-				material = Enum.Material.Snow,
-			})
+			blob(
+				model,
+				"Snow",
+				Vector3.new(sz.X * 0.92, math.max(0.6, sz.Y * 0.4), sz.Z * 0.92),
+				cf * CFrame.new(0, sz.Y / 2, 0),
+				PALETTE.snowCap
+			)
 		end
 	end
 	model.PrimaryPart = first
 	return model
 end
 
--- Fallen log: bark-covered trunk with a lighter sawn end and broken branch stubs.
+-- Fallen log: chunky trunk with a pale sawn end, branch stubs and snow along the top.
 function AssetFactory.fallenLog(at: CFrame, seed: number): Model
 	local r = Random.new(seed)
 	local model = newModel("FallenLog")
 	local len = r:NextNumber(7, 11)
-	local d = r:NextNumber(1, 1.4)
+	local d = r:NextNumber(1.2, 1.6)
 	local a = (at * CFrame.new(-len / 2, d / 2, 0)).Position
 	local b = (at * CFrame.new(len / 2, d / 2, 0)).Position
-	local log = cylinderBetween(model, a, b, d, {
-		name = "Trunk",
-		color = jitter(Color3.fromRGB(84, 64, 46), 0.06),
-		material = Enum.Material.Wood,
-		collide = true,
-	})
-	model.PrimaryPart = log
-	cylinderBetween(
+	local log = rod(model, "Trunk", a, b, d, jitter(PALETTE.log, 0.05), Enum.Material.Wood, { collide = true })
+	setPrimary(model, log, at)
+	rod(model, "SawnEnd", b, b + (b - a).Unit * 0.08, d * 0.9, Color3.fromRGB(232, 196, 140), Enum.Material.Wood)
+	block(
 		model,
-		b,
-		b + (b - a).Unit * 0.05,
-		d * 0.94,
-		{ name = "SawnEnd", color = Color3.fromRGB(176, 140, 96), material = Enum.Material.Wood }
+		"Snow",
+		Vector3.new(len * 0.85, 0.3, d * 0.55),
+		at * CFrame.new(0, d * 0.97, 0),
+		PALETTE.snowCap,
+		nil,
+		{ shadow = false }
 	)
-	for _ = 1, 3 do
+	for _ = 1, 2 do
 		local t = r:NextNumber(0.2, 0.8)
-		local p = a:Lerp(b, t) + Vector3.new(0, d * 0.4, 0)
-		cylinderBetween(
+		local p = a:Lerp(b, t) + Vector3.new(0, d * 0.3, 0)
+		rod(
 			model,
+			"BranchStub",
 			p,
-			p + Vector3.new(r:NextNumber(-0.6, 0.6), r:NextNumber(0.4, 0.9), r:NextNumber(-0.6, 0.6)),
-			d * 0.18,
-			{
-				name = "BranchStub",
-				color = Color3.fromRGB(72, 58, 44),
-				material = Enum.Material.Wood,
-			}
+			p + Vector3.new(r:NextNumber(-0.5, 0.5), r:NextNumber(0.6, 1.0), r:NextNumber(-0.5, 0.5)),
+			d * 0.25,
+			darker(PALETTE.log, 0.85),
+			Enum.Material.Wood
 		)
 	end
 	return model
 end
 
--- Simple log cabin with a doorway and pitched roof. Returns the model and interior box.
+-- Closed log cabin: walls with a front doorway, gable ends, a red pitched roof under snow,
+-- cyan windows, a chimney and a porch lamp. Returns the model and its interior box.
 function AssetFactory.cabin(at: CFrame, size: Vector3): (Model, CFrame, Vector3)
 	local model = newModel("Cabin")
 	local w, h, d = size.X, size.Y, size.Z
 	local wall = 0.8
-	local logColor = Color3.fromRGB(110, 80, 54)
-	local floor = part(model, {
-		name = "Floor",
-		size = Vector3.new(w, 0.6, d),
-		cframe = at * CFrame.new(0, 0.3, 0),
-		color = Color3.fromRGB(120, 92, 62),
-		material = Enum.Material.WoodPlanks,
-		collide = true,
-	})
+	local logColor = Color3.fromRGB(176, 116, 66)
+	local floor = block(
+		model,
+		"Floor",
+		Vector3.new(w, 0.6, d),
+		at * CFrame.new(0, 0.3, 0),
+		darker(PALETTE.crate, 0.8),
+		Enum.Material.WoodPlanks,
+		{ collide = true }
+	)
 	model.PrimaryPart = floor
 	local function wallPart(cf: CFrame, s: Vector3)
-		part(model, {
-			name = "Wall",
-			size = s,
-			cframe = at * cf,
-			color = jitter(logColor, 0.03),
-			material = Enum.Material.Wood,
-			collide = true,
-		})
+		block(model, "Wall", s, at * cf, jitter(logColor, 0.02), Enum.Material.Wood, { collide = true })
 	end
-	wallPart(CFrame.new(0, h / 2, d / 2 - wall / 2), Vector3.new(w, h, wall)) -- back
-	wallPart(CFrame.new(-w / 2 + wall / 2, h / 2, 0), Vector3.new(wall, h, d))
-	wallPart(CFrame.new(w / 2 - wall / 2, h / 2, 0), Vector3.new(wall, h, d))
-	local door = 5
+	local door = math.min(5, w * 0.3)
+	local doorH = math.min(7, h - 1)
 	local side = (w - door) / 2
+	wallPart(CFrame.new(0, h / 2, d / 2 - wall / 2), Vector3.new(w, h, wall)) -- back
+	wallPart(CFrame.new(-w / 2 + wall / 2, h / 2, 0), Vector3.new(wall, h, d - wall * 2))
+	wallPart(CFrame.new(w / 2 - wall / 2, h / 2, 0), Vector3.new(wall, h, d - wall * 2))
 	wallPart(CFrame.new(-w / 2 + side / 2, h / 2, -d / 2 + wall / 2), Vector3.new(side, h, wall))
 	wallPart(CFrame.new(w / 2 - side / 2, h / 2, -d / 2 + wall / 2), Vector3.new(side, h, wall))
-	wallPart(CFrame.new(0, h - 1.5, -d / 2 + wall / 2), Vector3.new(door, 3, wall))
-	-- Pitched roof: two slabs meeting at the ridge, overhanging the walls.
-	local pitch = math.rad(30)
-	local slab = (w / 2 + 1) / math.cos(pitch)
-	for _, s in { -1, 1 } do
-		part(model, {
-			name = "Roof",
-			size = Vector3.new(slab, 0.6, d + 2),
-			cframe = at
-				* CFrame.new(s * (w / 4 + 0.5), h + math.tan(pitch) * (w / 4), 0)
-				* CFrame.Angles(0, 0, -s * pitch),
-			color = jitter(Color3.fromRGB(70, 60, 55), 0.04),
-			material = Enum.Material.WoodPlanks,
+	wallPart(CFrame.new(0, (doorH + h) / 2, -d / 2 + wall / 2), Vector3.new(door, h - doorH, wall))
+	-- Corner posts give the silhouette its chunky log-cabin corners.
+	for _, x in { -1, 1 } do
+		for _, z in { -1, 1 } do
+			rod(
+				model,
+				"CornerPost",
+				(at * CFrame.new(x * w / 2, 0, z * d / 2)).Position,
+				(at * CFrame.new(x * w / 2, h + 0.2, z * d / 2)).Position,
+				1.1,
+				darker(logColor, 0.75),
+				Enum.Material.Wood,
+				{ collide = true }
+			)
+		end
+	end
+	-- Gables close the roof space (the old greybox left these open).
+	local rise = (w / 2) * math.tan(math.rad(30))
+	for _, z in { -d / 2 + wall / 2, d / 2 - wall / 2 } do
+		gable(model, "Gable", at * CFrame.new(0, h, z), w, rise, wall, logColor, Enum.Material.Wood, {
 			collide = true,
 		})
 	end
-	-- Interior volume for shelter checks.
+	-- Roof slabs with a snow layer, overhanging walls and gables.
+	local ridgeL = Vector3.new(0, h + rise, 0)
+	local over = 1.2
+	for _, s in { -1, 1 } do
+		local eave = Vector3.new(s * (w / 2 + over), h - over * math.tan(math.rad(30)), 0)
+		local out = Vector3.new(s, 2, 0)
+		slab(model, "Roof", at, ridgeL, eave, Vector3.zAxis, d + 2, 0.7, 0.35, out, Color3.fromRGB(196, 58, 46), nil, {
+			collide = true,
+		})
+		slab(
+			model,
+			"RoofSnow",
+			at,
+			ridgeL,
+			ridgeL:Lerp(eave, 0.94),
+			Vector3.zAxis,
+			d + 1.6,
+			0.4,
+			0.9,
+			out,
+			PALETTE.snowCap,
+			nil,
+			{ shadow = false }
+		)
+	end
+	rod(
+		model,
+		"RidgeCap",
+		(at * CFrame.new(0, h + rise + 0.75, -d / 2 - 1)).Position,
+		(at * CFrame.new(0, h + rise + 0.75, d / 2 + 1)).Position,
+		1,
+		PALETTE.snowCap,
+		nil,
+		{ shadow = false }
+	)
+	-- Chimney through the roof.
+	block(
+		model,
+		"Chimney",
+		Vector3.new(1.8, rise + 2.5, 1.8),
+		at * CFrame.new(w * 0.25, h + (rise + 2.5) / 2 + 0.6, d * 0.2),
+		PALETTE.stoneDark,
+		nil,
+		{ shadow = true }
+	)
+	-- Windows on the side walls and beside the door.
+	for _, s in { -1, 1 } do
+		for _, z in { -d * 0.22, d * 0.22 } do
+			block(
+				model,
+				"Window",
+				Vector3.new(0.2, 2.4, 3),
+				at * CFrame.new(s * (w / 2 + 0.05), h * 0.55, z),
+				PALETTE.glass,
+				nil,
+				{ shadow = false }
+			)
+		end
+		block(
+			model,
+			"Window",
+			Vector3.new(2.6, 2.4, 0.2),
+			at * CFrame.new(s * (door / 2 + side / 2), h * 0.55, -d / 2 - 0.05),
+			PALETTE.glass,
+			nil,
+			{ shadow = false }
+		)
+	end
+	local lamp = blob(
+		model,
+		"PorchLamp",
+		Vector3.new(0.7, 0.9, 0.7),
+		at * CFrame.new(door / 2 + 0.8, doorH + 0.2, -d / 2 - 0.5),
+		PALETTE.warmLight,
+		Enum.Material.Neon,
+		{ shadow = false }
+	)
+	local light = Instance.new("PointLight")
+	light.Range = 16
+	light.Brightness = 1.4
+	light.Color = PALETTE.warmLight
+	light.Parent = lamp
 	return model, at * CFrame.new(0, h / 2, 0), Vector3.new(w - wall * 2, h, d - wall * 2)
 end
 
+-- Wooden crate standing on `at` (bottom centre): planked core framed by darker bands, with an
+-- optional diagonal brace on the front. Returns the core (collides).
+local function crateBox(parent: Instance, at: CFrame, s: Vector3, name: string, brace: boolean): Part
+	local core = block(
+		parent,
+		name,
+		s,
+		at * CFrame.new(0, s.Y / 2, 0),
+		jitter(PALETTE.crate, 0.025),
+		Enum.Material.WoodPlanks,
+		{ collide = true, shadow = true }
+	)
+	local trim = darker(PALETTE.crate, 0.7)
+	local band = math.min(0.36, s.Y * 0.12)
+	for _, y in { -1, 1 } do
+		block(
+			parent,
+			"Band",
+			Vector3.new(s.X + 0.1, band, s.Z + 0.1),
+			at * CFrame.new(0, s.Y / 2 + y * (s.Y / 2 - band / 2), 0),
+			trim,
+			Enum.Material.Wood,
+			{ shadow = false }
+		)
+	end
+	for _, x in { -1, 1 } do
+		block(
+			parent,
+			"Band",
+			Vector3.new(band, s.Y + 0.1, s.Z + 0.1),
+			at * CFrame.new(x * (s.X / 2 - band / 2), s.Y / 2, 0),
+			trim,
+			Enum.Material.Wood,
+			{ shadow = false }
+		)
+	end
+	if brace then
+		local w, h = s.X - band * 2, s.Y - band * 2
+		block(
+			parent,
+			"Brace",
+			Vector3.new(math.sqrt(w * w + h * h), band * 0.9, 0.12),
+			at * CFrame.new(0, s.Y / 2, -s.Z / 2 - 0.04) * CFrame.Angles(0, 0, math.atan2(h, w)),
+			trim,
+			Enum.Material.Wood,
+			{ shadow = false }
+		)
+	end
+	return core
+end
+
+-- Supply crate (prompt anchor: PrimaryPart "Box"): a big framed crate with a red lid and a
+-- white "SUPPLIES" plate on the front.
 function AssetFactory.supplyCrate(at: CFrame): Model
 	local model = newModel("SupplyCrate")
-	local box = part(model, {
-		name = "Box",
-		size = Vector3.new(4, 2.6, 2.6),
-		cframe = at * CFrame.new(0, 1.3, 0),
-		color = Color3.fromRGB(150, 115, 70),
-		material = Enum.Material.WoodPlanks,
-		collide = true,
-	})
+	local s = Vector3.new(4, 2.6, 2.6)
+	local box = crateBox(model, at, s, "Box", false)
 	model.PrimaryPart = box
-	for _, x in { -1.9, 1.9 } do
-		part(model, {
-			name = "Corner",
-			size = Vector3.new(0.25, 2.7, 2.7),
-			cframe = at * CFrame.new(x, 1.3, 0),
-			color = Color3.fromRGB(70, 70, 72),
-			material = Enum.Material.Metal,
-		})
-	end
-	part(model, {
-		name = "Label",
-		size = Vector3.new(1.6, 0.9, 0.05),
-		cframe = at * CFrame.new(0, 1.4, -1.33),
-		color = Color3.fromRGB(200, 40, 40),
-		material = Enum.Material.SmoothPlastic,
-	})
+	block(
+		model,
+		"Lid",
+		Vector3.new(s.X + 0.3, 0.4, s.Z + 0.3),
+		at * CFrame.new(0, s.Y + 0.2, 0),
+		PALETTE.markerRed,
+		nil,
+		{ shadow = false }
+	)
+	local plate = block(
+		model,
+		"Plate",
+		Vector3.new(2.8, 1.1, 0.12),
+		at * CFrame.new(0, s.Y * 0.5, -s.Z / 2 - 0.07),
+		PALETTE.white,
+		nil,
+		{ shadow = false }
+	)
+	surfaceText(plate, Enum.NormalId.Front, "SUPPLIES", PALETTE.markerRed)
 	return model
 end
 
+-- Stack of `n` (1-7) crates: two-wide rows with crates bridged on top; a stuffed sack crowns
+-- stacks of 3+.
+local STACK_SLOTS = {
+	{ -1.6, 0, -1.6 },
+	{ 1.6, 0, -1.6 },
+	{ 0, 1, -1.6 },
+	{ -1.6, 0, 1.6 },
+	{ 1.6, 0, 1.6 },
+	{ 0, 1, 1.6 },
+	{ 0, 2, 0 },
+}
+function AssetFactory.crateStack(at: CFrame, n: number): Model
+	local model = newModel("CrateStack")
+	local count = math.clamp(math.floor(n), 1, #STACK_SLOTS)
+	local dz = if count <= 3 then 1.6 else 0
+	local size = 3
+	local top: CFrame? = nil
+	local topLevel = -1
+	for i = 1, count do
+		local slot = STACK_SLOTS[i]
+		local x = if count == 1 then 0 else slot[1]
+		local frame = at
+			* CFrame.new(x, slot[2] * size, slot[3] + dz)
+			* CFrame.Angles(0, rng:NextNumber(-0.08, 0.08), 0)
+		local core = crateBox(model, frame, Vector3.new(size, size, size), "Crate", i % 2 == 1)
+		if i == 1 then
+			model.PrimaryPart = core
+		end
+		if slot[2] > topLevel then
+			topLevel = slot[2]
+			top = frame
+		end
+	end
+	if count >= 3 and top then
+		blob(
+			model,
+			"Sack",
+			Vector3.new(1.9, 1.1, 1.4),
+			top * CFrame.new(0.2, size + 0.45, 0) * CFrame.Angles(0, 0.4, 0),
+			if count % 2 == 0 then PALETTE.blue else PALETTE.orange,
+			Enum.Material.Fabric,
+			{ shadow = false }
+		)
+	end
+	return model
+end
+
+-- Outfitter clothes rack: two posts, a rail, jackets on hangers (decorative).
 function AssetFactory.outfitterRack(at: CFrame): Model
 	local model = newModel("OutfitterRack")
-	local bar = cylinderBetween(model, (at * CFrame.new(-4, 6, 0)).Position, (at * CFrame.new(4, 6, 0)).Position, 0.2, {
-		name = "Bar",
-		color = Color3.fromRGB(80, 80, 85),
-		material = Enum.Material.Metal,
-	})
-	model.PrimaryPart = bar
+	local bar = rod(
+		model,
+		"Bar",
+		(at * CFrame.new(-4, 6, 0)).Position,
+		(at * CFrame.new(4, 6, 0)).Position,
+		0.25,
+		PALETTE.metal,
+		Enum.Material.Metal,
+		{ shadow = false }
+	)
+	setPrimary(model, bar, at)
 	for _, x in { -4, 4 } do
-		cylinderBetween(model, (at * CFrame.new(x, 0, 0)).Position, (at * CFrame.new(x, 6.1, 0)).Position, 0.25, {
-			name = "Post",
-			color = Color3.fromRGB(100, 75, 50),
-			material = Enum.Material.Wood,
-			collide = true,
-		})
+		rod(
+			model,
+			"Post",
+			(at * CFrame.new(x, 0, 0)).Position,
+			(at * CFrame.new(x, 6.2, 0)).Position,
+			0.35,
+			PALETTE.pole,
+			Enum.Material.Wood,
+			{ collide = true, shadow = false }
+		)
+		block(
+			model,
+			"Foot",
+			Vector3.new(0.5, 0.3, 2.2),
+			at * CFrame.new(x, 0.15, 0),
+			PALETTE.dark,
+			nil,
+			{ shadow = false }
+		)
 	end
-	local jackets = {
-		Color3.fromRGB(200, 70, 40),
-		Color3.fromRGB(210, 170, 30),
-		Color3.fromRGB(60, 120, 160),
-		Color3.fromRGB(30, 40, 60),
-	}
+	local jackets = { PALETTE.red, PALETTE.yellow, PALETTE.blue, PALETTE.orange }
 	for i, c in jackets do
 		local x = -3 + (i - 1) * 2
-		part(model, {
-			name = "Jacket",
-			size = Vector3.new(1.6, 2.4, 0.5),
-			cframe = at * CFrame.new(x, 4.6, 0),
-			color = jitter(c, 0.03),
-			material = Enum.Material.Fabric,
-		})
-		part(model, {
-			name = "Hanger",
-			size = Vector3.new(1.2, 0.08, 0.08),
-			cframe = at * CFrame.new(x, 5.85, 0),
-			color = Color3.fromRGB(50, 50, 50),
-			material = Enum.Material.Metal,
-		})
+		block(
+			model,
+			"Jacket",
+			Vector3.new(1.7, 2.5, 0.7),
+			at * CFrame.new(x, 4.5, 0),
+			c,
+			Enum.Material.Fabric,
+			{ shadow = false }
+		)
+		block(
+			model,
+			"Hood",
+			Vector3.new(1.2, 0.35, 0.8),
+			at * CFrame.new(x, 5.85, 0),
+			Color3.fromRGB(205, 175, 125),
+			Enum.Material.Fabric,
+			{ shadow = false }
+		)
 	end
 	return model
 end
 
+-- Camp logbook lectern (prompt anchor: PrimaryPart "Post") with a small pennant.
 function AssetFactory.logbook(at: CFrame): Model
 	local model = newModel("Logbook")
-	local post = part(model, {
-		name = "Post",
-		size = Vector3.new(0.6, 3.4, 0.6),
-		cframe = at * CFrame.new(0, 1.7, 0),
-		color = Color3.fromRGB(100, 74, 50),
-		material = Enum.Material.Wood,
-		collide = true,
-	})
+	local post = block(
+		model,
+		"Post",
+		Vector3.new(0.8, 3.4, 0.8),
+		at * CFrame.new(0, 1.7, 0),
+		PALETTE.pole,
+		Enum.Material.Wood,
+		{ collide = true, shadow = false }
+	)
 	model.PrimaryPart = post
-	part(model, {
-		name = "Desk",
-		size = Vector3.new(1.8, 0.15, 1.3),
-		cframe = at * CFrame.new(0, 3.45, 0) * CFrame.Angles(math.rad(-15), 0, 0),
-		color = Color3.fromRGB(110, 82, 56),
-		material = Enum.Material.WoodPlanks,
-	})
-	part(model, {
-		name = "Book",
-		size = Vector3.new(1.3, 0.12, 0.9),
-		cframe = at * CFrame.new(0, 3.58, 0) * CFrame.Angles(math.rad(-15), 0, 0),
-		color = Color3.fromRGB(90, 30, 30),
-		material = LEATHER,
-	})
-	-- Weathered expedition flag on a pole beside the book.
-	cylinderBetween(model, (at * CFrame.new(1.4, 0, 0)).Position, (at * CFrame.new(1.4, 8, 0)).Position, 0.12, {
-		name = "FlagPole",
-		color = Color3.fromRGB(160, 160, 165),
-		material = Enum.Material.Metal,
-	})
-	part(model, {
-		name = "Flag",
-		size = Vector3.new(0.04, 1.4, 2.2),
-		cframe = at * CFrame.new(1.4, 7.2, 1.1),
-		color = Color3.fromRGB(190, 60, 50),
-		material = Enum.Material.Fabric,
-	})
+	local deskFrame = at * CFrame.new(0, 3.5, 0) * CFrame.Angles(math.rad(-18), 0, 0)
+	block(
+		model,
+		"Desk",
+		Vector3.new(2.2, 0.25, 1.6),
+		deskFrame,
+		darker(PALETTE.crate, 0.8),
+		Enum.Material.WoodPlanks,
+		{ shadow = false }
+	)
+	block(
+		model,
+		"Book",
+		Vector3.new(1.7, 0.2, 1.2),
+		deskFrame * CFrame.new(0, 0.2, 0),
+		PALETTE.markerRed,
+		LEATHER,
+		{ shadow = false }
+	)
+	block(
+		model,
+		"Pages",
+		Vector3.new(1.5, 0.08, 1.05),
+		deskFrame * CFrame.new(0, 0.33, 0),
+		PALETTE.white,
+		nil,
+		{ shadow = false }
+	)
+	rod(
+		model,
+		"FlagPole",
+		(at * CFrame.new(1.5, 0, 0)).Position,
+		(at * CFrame.new(1.5, 7, 0)).Position,
+		0.2,
+		PALETTE.white,
+		Enum.Material.Metal,
+		{ shadow = false }
+	)
+	block(
+		model,
+		"Flag",
+		Vector3.new(0.1, 1.2, 1.9),
+		at * CFrame.new(1.5, 6.3, 0.95),
+		PALETTE.markerRed,
+		Enum.Material.Fabric,
+		{ shadow = false }
+	)
 	return model
 end
 
+-- Water source: a chunky blue barrel with hoops, lid and tap ("Meltwater"), or a hand pump
+-- ("Pump"). PrimaryPart "Barrel".
 function AssetFactory.waterStation(at: CFrame, kind: string): Model
 	local model = newModel(kind)
-	local barrel =
-		cylinderBetween(model, (at * CFrame.new(0, 0, 0)).Position, (at * CFrame.new(0, 3, 0)).Position, 2.2, {
-			name = "Barrel",
-			color = if kind == "Meltwater" then Color3.fromRGB(70, 80, 90) else Color3.fromRGB(60, 90, 120),
-			material = Enum.Material.Metal,
-			collide = true,
-		})
-	model.PrimaryPart = barrel
-	part(model, {
-		name = "Water",
-		size = Vector3.new(1.9, 0.05, 1.9),
-		cframe = at * CFrame.new(0, 2.95, 0),
-		color = Color3.fromRGB(80, 130, 170),
-		material = Enum.Material.Glass,
-		transparency = 0.3,
-	})
+	local barrel = rod(
+		model,
+		"Barrel",
+		(at * CFrame.new(0, 0, 0)).Position,
+		(at * CFrame.new(0, 3.2, 0)).Position,
+		2.6,
+		PALETTE.blue,
+		nil,
+		{ collide = true, shadow = true }
+	)
+	setPrimary(model, barrel, at)
+	for _, y in { 0.7, 2.5 } do
+		rod(
+			model,
+			"Hoop",
+			(at * CFrame.new(0, y - 0.15, 0)).Position,
+			(at * CFrame.new(0, y + 0.15, 0)).Position,
+			2.75,
+			darker(PALETTE.blue, 0.6),
+			nil,
+			{ shadow = false }
+		)
+	end
+	rod(
+		model,
+		"Lid",
+		(at * CFrame.new(0, 3.2, 0)).Position,
+		(at * CFrame.new(0, 3.45, 0)).Position,
+		2.7,
+		PALETTE.white,
+		nil,
+		{ shadow = false }
+	)
+	blob(
+		model,
+		"Snow",
+		Vector3.new(2.2, 0.5, 2.2),
+		at * CFrame.new(0, 3.45, 0),
+		PALETTE.snowCap,
+		nil,
+		{ shadow = false }
+	)
+	rod(
+		model,
+		"Tap",
+		(at * CFrame.new(0, 0.9, -1.2)).Position,
+		(at * CFrame.new(0, 0.9, -1.75)).Position,
+		0.35,
+		PALETTE.metal,
+		Enum.Material.Metal,
+		{ shadow = false }
+	)
+	if kind == "Pump" then
+		rod(
+			model,
+			"PumpBody",
+			(at * CFrame.new(0, 3.4, 0)).Position,
+			(at * CFrame.new(0, 5.2, 0)).Position,
+			0.6,
+			PALETTE.markerRed,
+			Enum.Material.Metal,
+			{ shadow = false }
+		)
+		rod(
+			model,
+			"Handle",
+			(at * CFrame.new(0, 5, 0)).Position,
+			(at * CFrame.new(1.6, 5.6, 0)).Position,
+			0.22,
+			PALETTE.dark,
+			Enum.Material.Metal,
+			{ shadow = false }
+		)
+	end
 	return model
 end
 
--- Dropped item / lost pack container on the ground.
+-- Dropped item / lost pack on the ground (PrimaryPart "Bundle").
 function AssetFactory.groundBundle(at: CFrame, big: boolean): Model
 	local model = newModel("Dropped")
-	local s = if big then Vector3.new(1.6, 2.2, 1) else Vector3.new(0.9, 0.6, 0.7)
-	local p = part(model, {
-		name = "Bundle",
-		size = s,
-		cframe = at * CFrame.new(0, s.Y / 2, 0),
-		color = if big then Color3.fromRGB(170, 60, 40) else Color3.fromRGB(120, 110, 90),
-		material = Enum.Material.Fabric,
+	local s = if big then Vector3.new(1.7, 2.3, 1.1) else Vector3.new(1.1, 0.7, 0.8)
+	local p = block(
+		model,
+		"Bundle",
+		s,
+		at * CFrame.new(0, s.Y / 2, 0),
+		if big then PALETTE.red else PALETTE.orange,
+		Enum.Material.Fabric,
+		{ collide = true, shadow = false }
+	)
+	model.PrimaryPart = p
+	block(
+		model,
+		"Strap",
+		Vector3.new(s.X + 0.06, 0.18, s.Z + 0.06),
+		at * CFrame.new(0, s.Y * 0.6, 0),
+		PALETTE.dark,
+		Enum.Material.Fabric,
+		{ shadow = false }
+	)
+	return model
+end
+
+---------------------------------------------------------------------------------------------
+-- TENTS. Each returns (model, interiorFrame, interiorSize): the box CampKit/BuildingService use
+-- as a shelter volume. Size = Vector3(width X, height Y, length Z); the door is at the front
+-- (local -Z). PrimaryPart is always the identity-oriented "Floor".
+---------------------------------------------------------------------------------------------
+
+-- A-frame tent (default 8 x 7 x 8): two sloped skins, closed back gable with a window, a
+-- half-zipped darker door panel on the front, pole tips poking out at both ends and four guy
+-- lines to stakes. Walk-in along the centre line.
+function AssetFactory.aFrameTent(at: CFrame, color: Color3, size: Vector3?): (Model, CFrame, Vector3)
+	local s = size or Vector3.new(8, 7, 8)
+	local W, H, L = s.X, s.Y, s.Z
+	local hw, hl = W / 2, L / 2
+	local model = newModel("AFrameTent")
+	local endColor = darker(color, 0.85)
+	local doorColor = darker(color, 0.55)
+	local floor = block(
+		model,
+		"Floor",
+		Vector3.new(W - 0.8, 0.2, L - 0.3),
+		at * CFrame.new(0, 0.1, 0),
+		darker(color, 0.4),
+		Enum.Material.Fabric,
+		{ collide = true, shadow = false }
+	)
+	model.PrimaryPart = floor
+	local thick = 0.35
+	for _, side in { -1, 1 } do
+		slab(
+			model,
+			"Skin",
+			at,
+			Vector3.new(0, H, 0),
+			Vector3.new(side * hw, 0, 0),
+			Vector3.zAxis,
+			L + 0.6,
+			thick,
+			thick / 2,
+			Vector3.new(side, 1, 0),
+			color,
+			Enum.Material.Fabric,
+			{ collide = true, shadow = true }
+		)
+	end
+	rod(
+		model,
+		"Ridge",
+		(at * CFrame.new(0, H + 0.12, -hl - 0.35)).Position,
+		(at * CFrame.new(0, H + 0.12, hl + 0.35)).Position,
+		0.6,
+		endColor,
+		Enum.Material.Fabric,
+		{ shadow = false }
+	)
+	gable(model, "EndWall", at * CFrame.new(0, 0, hl - thick / 2), W, H, thick, endColor, Enum.Material.Fabric, {
 		collide = true,
 	})
-	model.PrimaryPart = p
+	-- Front: the left part is the zipped door panel, the right part is open (walk-in).
+	local gap = math.min(0.8, hw * 0.3)
+	local doorH = H * (1 - gap / hw)
+	fin(
+		model,
+		"Door",
+		at * CFrame.new(-gap, 0, -hl + thick / 2),
+		-Vector3.xAxis,
+		hw - gap,
+		doorH,
+		thick,
+		doorColor,
+		Enum.Material.Fabric,
+		{ collide = true }
+	)
+	block(
+		model,
+		"Zip",
+		Vector3.new(0.16, doorH * 0.92, 0.12),
+		at * CFrame.new(-gap, doorH * 0.46, -hl - 0.02),
+		PALETTE.dark,
+		nil,
+		{ shadow = false }
+	)
+	-- Rolled-back flap under the right skin's front edge.
+	local inward = Vector3.new(-H, -hw, 0).Unit
+	local p1 = Vector3.new(0, H, -hl + 0.1) + inward * 0.4
+	local p2 = Vector3.new(hw, 0, -hl + 0.1) + inward * 0.4
+	rod(
+		model,
+		"RolledFlap",
+		at * p1:Lerp(p2, 0.12),
+		at * p1:Lerp(p2, 0.85),
+		0.55,
+		doorColor,
+		Enum.Material.Fabric,
+		{ shadow = false }
+	)
+	block(
+		model,
+		"Window",
+		Vector3.new(math.min(1.6, W * 0.2), math.min(1.2, H * 0.17), 0.12),
+		at * CFrame.new(0, H * 0.42, hl + 0.05),
+		PALETTE.window,
+		nil,
+		{ shadow = false }
+	)
+	for _, z in { -hl - 0.15, hl + 0.15 } do
+		rod(
+			model,
+			"PoleTip",
+			(at * CFrame.new(0, H - 0.5, z)).Position,
+			(at * CFrame.new(0, H + 1.1, z)).Position,
+			0.24,
+			PALETTE.dark,
+			nil,
+			{ shadow = false }
+		)
+		block(
+			model,
+			"PoleCap",
+			Vector3.new(0.5, 0.5, 0.5),
+			at * CFrame.new(0, H + 1.15, z),
+			PALETTE.white,
+			nil,
+			{ shape = Enum.PartType.Ball, shadow = false }
+		)
+		local zs = if z < 0 then -1 else 1
+		for _, x in { -1, 1 } do
+			guyLine(
+				model,
+				(at * CFrame.new(0, H + 0.85, z)).Position,
+				(at * CFrame.new(x * W * 0.38, 0, z + zs * 3)).Position
+			)
+		end
+	end
+	return model, at * CFrame.new(0, H / 2, 0), Vector3.new(W * 0.55, H, L * 0.9)
+end
+
+-- Dome tent (default 8 x 6 x 7, the buildable 2-person tent): a smooth half-ellipsoid shell
+-- (lower half buried) lined on the inside, two crossing pole arcs, a darker door panel bulging
+-- from the front, side windows, a pole tip, guy lines and stakes. The shell is a mesh, so
+-- invisible walls (with a gap at the door) do the colliding.
+function AssetFactory.domeTent(at: CFrame, color: Color3, size: Vector3?): (Model, CFrame, Vector3)
+	local s = size or Vector3.new(8, 6, 7)
+	local W, H, L = s.X, s.Y, s.Z
+	local a, c = W / 2, L / 2
+	local model = newModel("DomeTent")
+	local floor = block(
+		model,
+		"Floor",
+		Vector3.new(W * 0.7, 0.2, L * 0.7),
+		at * CFrame.new(0, 0.1, 0),
+		darker(color, 0.4),
+		Enum.Material.Fabric,
+		{ collide = true, shadow = false }
+	)
+	model.PrimaryPart = floor
+	blob(model, "Shell", Vector3.new(W, H * 2, L), at, color, Enum.Material.Fabric, { shadow = true })
+	-- Inside-out copy (negative mesh scale flips the faces) so the walls show from inside.
+	local _, liningMesh = blob(
+		model,
+		"Lining",
+		Vector3.new(W - 0.3, H * 2 - 0.3, L - 0.3),
+		at,
+		darker(color, 0.8),
+		Enum.Material.Fabric,
+		{ shadow = false }
+	)
+	liningMesh.Scale = Vector3.new(-1, -1, -1)
+	-- Point on the shell along the meridian through azimuth phi (0 = front), t = 0..pi running
+	-- from one foot over the top to the opposite foot, pushed `lift` studs out along the normal.
+	local function surf(phi: number, t: number, lift: number): (Vector3, Vector3)
+		local x = a * math.cos(t) * math.sin(phi)
+		local y = H * math.sin(t)
+		local z = -c * math.cos(t) * math.cos(phi)
+		local n = Vector3.new(x / (a * a), y / (H * H), z / (c * c)).Unit
+		return Vector3.new(x, y, z) + n * lift, n
+	end
+	local poleColor = darker(color, 0.5)
+	for _, phi in { math.rad(45), math.rad(135) } do
+		local segs = 8
+		for k = 0, segs - 1 do
+			local p0 = surf(phi, k / segs * math.pi, 0.15)
+			local p1 = surf(phi, (k + 1) / segs * math.pi, 0.15)
+			rod(model, "Pole", at * p0, at * p1, 0.26, poleColor, nil, { shadow = false })
+		end
+	end
+	-- Door: a dark ellipsoid set into the front so only an arch-shaped panel bulges out.
+	blob(
+		model,
+		"Door",
+		Vector3.new(W * 0.46, H * 1.5, 1.6),
+		at * CFrame.new(0, 0, -c + 0.55) * CFrame.Angles(math.rad(6), 0, 0),
+		darker(color, 0.5),
+		Enum.Material.Fabric,
+		{ shadow = false }
+	)
+	for _, phi in { math.rad(90), math.rad(270) } do
+		local p, n = surf(phi, 0.8, -0.15)
+		blob(
+			model,
+			"Window",
+			Vector3.new(math.min(1.8, L * 0.26), math.min(1.3, H * 0.22), 0.6),
+			at * CFrame.lookAt(p, p + n),
+			PALETTE.window,
+			nil,
+			{ shadow = false }
+		)
+	end
+	rod(
+		model,
+		"PoleTip",
+		(at * CFrame.new(0, H - 0.3, 0)).Position,
+		(at * CFrame.new(0, H + 0.9, 0)).Position,
+		0.24,
+		PALETTE.dark,
+		nil,
+		{ shadow = false }
+	)
+	block(
+		model,
+		"PoleCap",
+		Vector3.new(0.5, 0.5, 0.5),
+		at * CFrame.new(0, H + 0.95, 0),
+		PALETTE.white,
+		nil,
+		{ shape = Enum.PartType.Ball, shadow = false }
+	)
+	for _, deg in { 60, 120, 240, 300 } do
+		local phi = math.rad(deg)
+		local anchor = surf(phi, 0.75, 0.1)
+		local ground = Vector3.new(a * 1.7 * math.sin(phi), 0, -c * 1.7 * math.cos(phi))
+		guyLine(model, at * anchor, at * ground)
+	end
+	-- Invisible collision ring (7 of 8 sides; the front one is the doorway).
+	local wallH = H * 0.8
+	for k = 1, 7 do
+		local phi0, phi1 = (k - 0.5) / 8 * math.pi * 2, (k + 0.5) / 8 * math.pi * 2
+		local p0 = Vector3.new(a * 0.88 * math.sin(phi0), 0, -c * 0.88 * math.cos(phi0))
+		local p1 = Vector3.new(a * 0.88 * math.sin(phi1), 0, -c * 0.88 * math.cos(phi1))
+		local along = p1 - p0
+		block(
+			model,
+			"Wall",
+			Vector3.new(along.Magnitude + 0.3, wallH, 0.4),
+			at * CFrame.fromMatrix((p0 + p1) / 2 + Vector3.new(0, wallH / 2, 0), along.Unit, Vector3.yAxis),
+			color,
+			nil,
+			{ collide = true, transparency = 1, shadow = false }
+		)
+	end
+	-- Snow cap BuildingService may fade in (sits on the shell: rim at 55% of the radius).
+	local capY = H * math.sqrt(1 - 0.55 * 0.55)
+	blob(
+		model,
+		"RoofSnow",
+		Vector3.new(W * 0.55, (H - capY + 0.15) * 2, L * 0.55),
+		at * CFrame.new(0, capY, 0),
+		PALETTE.snowCap,
+		nil,
+		{ transparency = 1, shadow = false }
+	)
+	return model, at * CFrame.new(0, H * 0.45, 0), Vector3.new(W * 0.7, H * 0.9, L * 0.7)
+end
+-- Big walk-in tent (default 40 x 14 x 28: the equipment / mess tent; smaller sizes make the
+-- sleeping tent and the small camps' group tent). Carpet floor (dark blue Fabric), straight
+-- side walls, a pitched roof with a ridge, closed gables, a wide doorway framed by poles with
+-- the flap rolled up above it, centre poles, pennants on the pole tips, windows, white trim
+-- bands and guy lines.
+function AssetFactory.bigTent(at: CFrame, color: Color3, size: Vector3?): (Model, CFrame, Vector3)
+	local s = size or Vector3.new(40, 14, 28)
+	local W, H, L = s.X, s.Y, s.Z
+	local hw, hl = W / 2, L / 2
+	local wallH = math.clamp(H * 0.45, 6, math.max(6, H - 2.5))
+	local rise = math.max(H - wallH, 1.5)
+	H = wallH + rise
+	local t = 0.5
+	local model = newModel("BigTent")
+	local trim = darker(color, 0.75)
+	local fabric = Enum.Material.Fabric
+	local wallOpts: Opts = { collide = true, shadow = true }
+	local floor = block(
+		model,
+		"Floor",
+		Vector3.new(W, 0.3, L),
+		at * CFrame.new(0, 0.15, 0),
+		PALETTE.navy,
+		fabric,
+		{ collide = true, shadow = false }
+	)
+	model.PrimaryPart = floor
+	for _, x in { -1, 1 } do
+		block(
+			model,
+			"Wall",
+			Vector3.new(t, wallH, L),
+			at * CFrame.new(x * (hw - t / 2), wallH / 2, 0),
+			color,
+			fabric,
+			wallOpts
+		)
+	end
+	block(model, "Wall", Vector3.new(W, wallH, t), at * CFrame.new(0, wallH / 2, hl - t / 2), color, fabric, wallOpts)
+	local door = math.min(W * 0.35, 12)
+	local sideW = (W - door) / 2
+	for _, x in { -1, 1 } do
+		block(
+			model,
+			"Wall",
+			Vector3.new(sideW, wallH, t),
+			at * CFrame.new(x * (door / 2 + sideW / 2), wallH / 2, -hl + t / 2),
+			color,
+			fabric,
+			wallOpts
+		)
+		rod(
+			model,
+			"DoorPole",
+			(at * CFrame.new(x * door / 2, 0, -hl - 0.1)).Position,
+			(at * CFrame.new(x * door / 2, wallH + 0.2, -hl - 0.1)).Position,
+			0.55,
+			PALETTE.pole,
+			Enum.Material.Wood,
+			{ collide = true, shadow = false }
+		)
+	end
+	for _, z in { -hl + t / 2, hl - t / 2 } do
+		gable(model, "Gable", at * CFrame.new(0, wallH, z), W, rise, t, color, fabric, wallOpts)
+	end
+	rod(
+		model,
+		"Lintel",
+		(at * CFrame.new(-door / 2 - 0.3, wallH, -hl - 0.1)).Position,
+		(at * CFrame.new(door / 2 + 0.3, wallH, -hl - 0.1)).Position,
+		0.55,
+		PALETTE.pole,
+		Enum.Material.Wood,
+		{ shadow = false }
+	)
+	rod(
+		model,
+		"RolledFlap",
+		(at * CFrame.new(-door / 2, wallH + 0.6, -hl - 0.4)).Position,
+		(at * CFrame.new(door / 2, wallH + 0.6, -hl - 0.4)).Position,
+		0.8,
+		trim,
+		fabric,
+		{ shadow = false }
+	)
+	-- Roof skins overhanging the walls, ridge cap.
+	local over = 0.8
+	local ridgeP = Vector3.new(0, H, 0)
+	for _, x in { -1, 1 } do
+		local eave = Vector3.new(x * (hw + over), wallH - over * rise / hw, 0)
+		slab(
+			model,
+			"Roof",
+			at,
+			ridgeP,
+			eave,
+			Vector3.zAxis,
+			L + 1.2,
+			t,
+			t / 2,
+			Vector3.new(x, 1, 0),
+			color,
+			fabric,
+			wallOpts
+		)
+		block(
+			model,
+			"Trim",
+			Vector3.new(0.16, 0.8, L + 0.1),
+			at * CFrame.new(x * (hw + 0.05), wallH - 0.9, 0),
+			PALETTE.white,
+			nil,
+			{ shadow = false }
+		)
+		block(
+			model,
+			"Trim",
+			Vector3.new(sideW, 0.8, 0.16),
+			at * CFrame.new(x * (door / 2 + sideW / 2), wallH - 0.9, -hl - 0.05),
+			PALETTE.white,
+			nil,
+			{ shadow = false }
+		)
+		-- Windows along each side wall.
+		local count = math.max(1, math.floor(L / 12))
+		for i = 1, count do
+			local z = -hl + L * i / (count + 1)
+			block(
+				model,
+				"Window",
+				Vector3.new(0.15, math.min(1.8, wallH * 0.3), math.min(2.8, L / (count + 1) * 0.6)),
+				at * CFrame.new(x * (hw + 0.08), wallH * 0.5, z),
+				PALETTE.window,
+				nil,
+				{ shadow = false }
+			)
+		end
+		-- Guy lines from the eaves to stakes.
+		for _, f in { -1 / 3, 0, 1 / 3 } do
+			local z = f * L
+			guyLine(
+				model,
+				(at * CFrame.new(x * (hw + over), wallH - over * rise / hw, z)).Position,
+				(at * CFrame.new(x * (hw + over + 3.5), 0, z)).Position
+			)
+		end
+	end
+	block(
+		model,
+		"Trim",
+		Vector3.new(W + 0.1, 0.8, 0.16),
+		at * CFrame.new(0, wallH - 0.9, hl + 0.05),
+		PALETTE.white,
+		nil,
+		{ shadow = false }
+	)
+	rod(
+		model,
+		"Ridge",
+		(at * CFrame.new(0, H + 0.3, -hl - 0.7)).Position,
+		(at * CFrame.new(0, H + 0.3, hl + 0.7)).Position,
+		0.8,
+		trim,
+		fabric,
+		{ shadow = false }
+	)
+	-- Centre poles (players bump into them) and pole tips with pennants above the ridge ends.
+	for _, z in (if L >= 16 then { -L / 4, L / 4 } else { 0 }) do
+		rod(
+			model,
+			"CentrePole",
+			(at * CFrame.new(0, 0, z)).Position,
+			(at * CFrame.new(0, H, z)).Position,
+			0.7,
+			PALETTE.pole,
+			Enum.Material.Wood,
+			{ collide = true, shadow = false }
+		)
+	end
+	for _, z in { -hl - 0.4, hl + 0.4 } do
+		local top = at * CFrame.new(0, H + 2.6, z)
+		rod(
+			model,
+			"PoleTip",
+			(at * CFrame.new(0, H - 0.4, z)).Position,
+			top.Position,
+			0.3,
+			PALETTE.dark,
+			nil,
+			{ shadow = false }
+		)
+		fin(model, "Pennant", top * CFrame.new(0, -1, 0), Vector3.xAxis, 2, 1, 0.12, PALETTE.markerRed, fabric, {
+			shadow = false,
+		})
+	end
+	return model, at * CFrame.new(0, H * 0.45, 0), Vector3.new(W - 1, H * 0.9, L - 1)
+end
+
+---------------------------------------------------------------------------------------------
+-- CAMP DRESSING
+---------------------------------------------------------------------------------------------
+
+-- Display mannequin on a black stand, facing at.LookVector. kind: "jacket" (jacket + pants),
+-- "backpack", "helmet" (helmet + goggles + headlamp) or "boots"; `color` tints the item.
+function AssetFactory.mannequin(at: CFrame, kind: string, color: Color3): Model
+	local model = newModel("Mannequin")
+	model:SetAttribute("Kind", kind)
+	local standColor = Color3.fromRGB(28, 28, 32)
+	local skin = Color3.fromRGB(70, 72, 82)
+	local deco: Opts = { shadow = false }
+	local function stand(poleTop: number)
+		local base = rod(
+			model,
+			"Stand",
+			at.Position,
+			(at * CFrame.new(0, 0.3, 0)).Position,
+			2.4,
+			standColor,
+			nil,
+			{ collide = true, shadow = false }
+		)
+		setPrimary(model, base, at)
+		if poleTop > 0.3 then
+			rod(
+				model,
+				"StandPole",
+				(at * CFrame.new(0, 0.3, 0)).Position,
+				(at * CFrame.new(0, poleTop, 0)).Position,
+				0.3,
+				standColor,
+				nil,
+				deco
+			)
+		end
+	end
+	if kind == "boots" then
+		local pedestal = block(
+			model,
+			"Stand",
+			Vector3.new(2.8, 1.6, 2.1),
+			at * CFrame.new(0, 0.8, 0),
+			standColor,
+			nil,
+			{ collide = true, shadow = false }
+		)
+		model.PrimaryPart = pedestal
+		local stripe = color:Lerp(PALETTE.white, 0.45)
+		for _, x in { -0.65, 0.65 } do
+			block(model, "Sole", Vector3.new(1.0, 0.3, 1.8), at * CFrame.new(x, 1.75, -0.1), PALETTE.dark, nil, deco)
+			block(model, "Foot", Vector3.new(0.95, 0.75, 1.6), at * CFrame.new(x, 2.27, -0.12), color, nil, deco)
+			block(model, "Stripe", Vector3.new(0.99, 0.22, 1.64), at * CFrame.new(x, 2.3, -0.12), stripe, nil, deco)
+			block(model, "Shaft", Vector3.new(0.95, 1.4, 0.95), at * CFrame.new(x, 3.3, 0.22), color, nil, deco)
+			block(
+				model,
+				"Cuff",
+				Vector3.new(1.02, 0.32, 1.02),
+				at * CFrame.new(x, 4.05, 0.22),
+				darker(color, 0.7),
+				nil,
+				deco
+			)
+		end
+	elseif kind == "backpack" then
+		stand(3.2)
+		block(
+			model,
+			"Pack",
+			Vector3.new(2.0, 2.6, 1.25),
+			at * CFrame.new(0, 4.4, 0),
+			color,
+			Enum.Material.Fabric,
+			{ collide = true, shadow = false }
+		)
+		block(model, "Lid", Vector3.new(1.95, 0.55, 1.4), at * CFrame.new(0, 5.95, 0.02), darker(color, 0.8), nil, deco)
+		rod(
+			model,
+			"TopRoll",
+			(at * CFrame.new(-1.1, 6.55, 0.05)).Position,
+			(at * CFrame.new(1.1, 6.55, 0.05)).Position,
+			0.85,
+			PALETTE.yellow,
+			Enum.Material.Fabric,
+			deco
+		)
+		block(
+			model,
+			"Pocket",
+			Vector3.new(1.5, 1.0, 0.3),
+			at * CFrame.new(0, 3.75, -0.72),
+			darker(color, 0.8),
+			nil,
+			deco
+		)
+		block(model, "HipBelt", Vector3.new(2.3, 0.4, 0.9), at * CFrame.new(0, 3.3, 0.3), PALETTE.dark, nil, deco)
+		for _, x in { -0.6, 0.6 } do
+			block(model, "Rail", Vector3.new(0.24, 2.5, 0.12), at * CFrame.new(x, 4.4, -0.68), PALETTE.dark, nil, deco)
+			block(
+				model,
+				"Buckle",
+				Vector3.new(0.42, 0.28, 0.14),
+				at * CFrame.new(x, 4.9, -0.76),
+				PALETTE.metal,
+				nil,
+				deco
+			)
+		end
+	elseif kind == "helmet" then
+		stand(5.4)
+		blob(model, "Head", Vector3.new(1.3, 1.45, 1.3), at * CFrame.new(0, 5.95, 0), skin, nil, deco)
+		blob(model, "Helmet", Vector3.new(1.6, 1.25, 1.65), at * CFrame.new(0, 6.4, 0.02), color, nil, deco)
+		blob(model, "GoggleStrap", Vector3.new(1.42, 0.26, 1.42), at * CFrame.new(0, 5.95, 0), PALETTE.dark, nil, deco)
+		blob(model, "GoggleRim", Vector3.new(1.3, 0.55, 0.5), at * CFrame.new(0, 5.95, -0.52), PALETTE.white, nil, deco)
+		blob(
+			model,
+			"GoggleLens",
+			Vector3.new(1.05, 0.38, 0.3),
+			at * CFrame.new(0, 5.95, -0.68),
+			PALETTE.cyan,
+			nil,
+			deco
+		)
+		block(
+			model,
+			"Headlamp",
+			Vector3.new(0.42, 0.3, 0.25),
+			at * CFrame.new(0, 6.55, -0.8),
+			Color3.fromRGB(255, 240, 190),
+			Enum.Material.Neon,
+			deco
+		)
+	else
+		-- jacket + pants
+		stand(0.3)
+		local pants = Color3.fromRGB(40, 42, 50)
+		for _, x in { -0.52, 0.52 } do
+			block(
+				model,
+				"Leg",
+				Vector3.new(0.95, 2.6, 1.0),
+				at * CFrame.new(x, 1.6, 0),
+				pants,
+				Enum.Material.Fabric,
+				deco
+			)
+		end
+		block(
+			model,
+			"Hips",
+			Vector3.new(2.05, 0.6, 1.05),
+			at * CFrame.new(0, 3.2, 0),
+			pants,
+			Enum.Material.Fabric,
+			deco
+		)
+		block(
+			model,
+			"Jacket",
+			Vector3.new(2.2, 2.0, 1.2),
+			at * CFrame.new(0, 4.4, 0),
+			color,
+			nil,
+			{ collide = true, shadow = false }
+		)
+		block(model, "Hem", Vector3.new(2.26, 0.3, 1.26), at * CFrame.new(0, 3.5, 0), darker(color, 0.75), nil, deco)
+		for _, x in { -1, 1 } do
+			block(
+				model,
+				"Sleeve",
+				Vector3.new(0.9, 2.0, 1.0),
+				at * CFrame.new(x * 1.6, 4.35, 0) * CFrame.Angles(0, 0, x * 0.08),
+				color,
+				nil,
+				deco
+			)
+			block(
+				model,
+				"Cuff",
+				Vector3.new(0.95, 0.35, 1.05),
+				at * CFrame.new(x * 1.68, 3.3, 0) * CFrame.Angles(0, 0, x * 0.08),
+				darker(color, 0.7),
+				nil,
+				deco
+			)
+		end
+		block(model, "Zip", Vector3.new(0.12, 1.9, 0.08), at * CFrame.new(0, 4.45, -0.63), PALETTE.dark, nil, deco)
+		block(model, "Patch", Vector3.new(0.5, 0.42, 0.08), at * CFrame.new(0.55, 4.9, -0.63), PALETTE.white, nil, deco)
+		blob(
+			model,
+			"FurHood",
+			Vector3.new(2.0, 0.6, 1.5),
+			at * CFrame.new(0, 5.45, 0.05),
+			Color3.fromRGB(205, 175, 125),
+			Enum.Material.Fabric,
+			deco
+		)
+		blob(model, "Head", Vector3.new(1.15, 1.3, 1.15), at * CFrame.new(0, 6.25, 0), skin, nil, deco)
+	end
+	return model
+end
+
+-- Sleeping mat: blue mat, white pillow at the back (+Z) end, folded blanket at the foot.
+-- PrimaryPart "Mat" (CampKit tags it SleepSpot).
+function AssetFactory.sleepingMat(at: CFrame): Model
+	local model = newModel("SleepingMat")
+	local mat = block(
+		model,
+		"Mat",
+		Vector3.new(2.8, 0.3, 6.6),
+		at * CFrame.new(0, 0.15, 0),
+		Color3.fromRGB(40, 110, 210),
+		nil,
+		{ shadow = false }
+	)
+	model.PrimaryPart = mat
+	blob(model, "Pillow", Vector3.new(2.1, 0.7, 1.2), at * CFrame.new(0, 0.55, 2.55), PALETTE.white, nil, {
+		shadow = false,
+	})
+	block(
+		model,
+		"Blanket",
+		Vector3.new(2.65, 0.25, 2.1),
+		at * CFrame.new(0, 0.42, -2.1),
+		Color3.fromRGB(25, 70, 150),
+		Enum.Material.Fabric,
+		{ shadow = false }
+	)
+	return model
+end
+
+-- Flag pole: white pole on a stone footing, gold ball, a two-panel waving flag.
+function AssetFactory.flagPole(at: CFrame, color: Color3): Model
+	local model = newModel("FlagPole")
+	local footing = block(
+		model,
+		"Footing",
+		Vector3.new(1.4, 0.7, 1.4),
+		at * CFrame.new(0, 0.2, 0),
+		PALETTE.stone,
+		nil,
+		{ collide = true, shadow = false }
+	)
+	model.PrimaryPart = footing
+	rod(
+		model,
+		"Pole",
+		(at * CFrame.new(0, 0, 0)).Position,
+		(at * CFrame.new(0, 16, 0)).Position,
+		0.35,
+		PALETTE.white,
+		Enum.Material.Metal,
+		{ collide = true, shadow = false }
+	)
+	block(
+		model,
+		"Finial",
+		Vector3.new(0.75, 0.75, 0.75),
+		at * CFrame.new(0, 16.25, 0),
+		PALETTE.yellow,
+		nil,
+		{ shape = Enum.PartType.Ball, shadow = false }
+	)
+	local y = 14.3
+	local p0, p1, p2 = Vector3.new(0.2, y, 0), Vector3.new(2.3, y - 0.1, -0.3), Vector3.new(4.3, y - 0.25, 0.1)
+	for _, seg in { { p0, p1 }, { p1, p2 } } do
+		slab(
+			model,
+			"Flag",
+			at,
+			seg[1],
+			seg[2],
+			Vector3.yAxis,
+			2.6,
+			0.12,
+			0,
+			Vector3.zAxis,
+			color,
+			Enum.Material.Fabric,
+			{ shadow = false }
+		)
+	end
+	return model
+end
+
+-- Lamp post with a warm bulb hanging toward its front.
+function AssetFactory.lampPost(at: CFrame): Model
+	local model = newModel("LampPost")
+	local metal = Color3.fromRGB(52, 56, 66)
+	local base = block(
+		model,
+		"Base",
+		Vector3.new(1.3, 0.8, 1.3),
+		at * CFrame.new(0, 0.2, 0),
+		metal,
+		Enum.Material.Metal,
+		{ collide = true, shadow = false }
+	)
+	model.PrimaryPart = base
+	rod(
+		model,
+		"Post",
+		at.Position,
+		(at * CFrame.new(0, 9, 0)).Position,
+		0.4,
+		metal,
+		Enum.Material.Metal,
+		{ collide = true, shadow = false }
+	)
+	rod(
+		model,
+		"Arm",
+		(at * CFrame.new(0, 8.6, 0)).Position,
+		(at * CFrame.new(0, 8.6, -1.8)).Position,
+		0.25,
+		metal,
+		Enum.Material.Metal,
+		{ shadow = false }
+	)
+	block(model, "Hood", Vector3.new(1.1, 0.45, 1.1), at * CFrame.new(0, 8.45, -1.8), metal, Enum.Material.Metal, {
+		shadow = false,
+	})
+	local bulb = blob(
+		model,
+		"Bulb",
+		Vector3.new(0.75, 0.65, 0.75),
+		at * CFrame.new(0, 8.05, -1.8),
+		PALETTE.warmLight,
+		Enum.Material.Neon,
+		{ shadow = false }
+	)
+	local light = Instance.new("PointLight")
+	light.Range = 20
+	light.Brightness = 1.6
+	light.Color = PALETTE.warmLight
+	light.Parent = bulb
+	return model
+end
+
+-- Rescue station (where evacuated players wake up): an orange building on stilts with a white
+-- "RESCUE" stripe, cyan windows, a red cross disc on the roof, stairs and railings, two cots
+-- inside and a lookout tower with a little rotor and a red beacon. Front (stairs) faces -Z.
+-- Returns (model, interiorFrame, interiorSize). Footprint about 26 x 30 including the stairs.
+function AssetFactory.rescueStation(at: CFrame): (Model, CFrame, Vector3)
+	local model = newModel("RescueStation")
+	local deco: Opts = { shadow = false }
+	local solid: Opts = { collide = true, shadow = true }
+	local deckTop = 6
+	local wood = Color3.fromRGB(176, 128, 80)
+	local steel = Color3.fromRGB(92, 98, 110)
+	local deck = block(
+		model,
+		"Deck",
+		Vector3.new(26, 1, 18),
+		at * CFrame.new(0, deckTop - 0.5, 0),
+		wood,
+		Enum.Material.WoodPlanks,
+		solid
+	)
+	model.PrimaryPart = deck
+	for _, x in { -12, 0, 12 } do
+		for _, z in { -8, 8 } do
+			rod(
+				model,
+				"Stilt",
+				(at * CFrame.new(x, -3, z)).Position,
+				(at * CFrame.new(x, deckTop - 1, z)).Position,
+				0.9,
+				steel,
+				Enum.Material.Metal,
+				{ collide = true, shadow = true }
+			)
+		end
+	end
+	for _, z in { -8, 8 } do
+		for _, x in { -12, 0 } do
+			rod(
+				model,
+				"Brace",
+				(at * CFrame.new(x, 0.4, z)).Position,
+				(at * CFrame.new(x + 12, deckTop - 1.3, z)).Position,
+				0.35,
+				steel,
+				Enum.Material.Metal,
+				deco
+			)
+		end
+	end
+	-- Building shell: 20 x 9 x 12 on the back of the deck, doorway in the front wall.
+	local base = deckTop
+	local wallH, z0, z1 = 9, -4.5, 7.5
+	local zc = (z0 + z1) / 2
+	local orange = PALETTE.rescue
+	block(
+		model,
+		"Wall",
+		Vector3.new(20, wallH, 0.6),
+		at * CFrame.new(0, base + wallH / 2, z1 - 0.3),
+		orange,
+		nil,
+		solid
+	)
+	for _, x in { -1, 1 } do
+		block(
+			model,
+			"Wall",
+			Vector3.new(0.6, wallH, 12),
+			at * CFrame.new(x * 9.7, base + wallH / 2, zc),
+			orange,
+			nil,
+			solid
+		)
+		block(
+			model,
+			"Wall",
+			Vector3.new(8, wallH, 0.6),
+			at * CFrame.new(x * 6, base + wallH / 2, z0 + 0.3),
+			orange,
+			nil,
+			solid
+		)
+	end
+	block(model, "Wall", Vector3.new(4, 2, 0.6), at * CFrame.new(0, base + 8, z0 + 0.3), orange, nil, solid)
+	block(
+		model,
+		"Roof",
+		Vector3.new(21.6, 0.8, 13.6),
+		at * CFrame.new(0, base + wallH + 0.4, zc),
+		PALETTE.white,
+		nil,
+		solid
+	)
+	-- Door frame.
+	for _, x in { -2.2, 2.2 } do
+		block(
+			model,
+			"DoorFrame",
+			Vector3.new(0.4, 7, 0.3),
+			at * CFrame.new(x, base + 3.5, z0 - 0.1),
+			PALETTE.white,
+			nil,
+			deco
+		)
+	end
+	block(
+		model,
+		"DoorFrame",
+		Vector3.new(4.8, 0.4, 0.3),
+		at * CFrame.new(0, base + 7, z0 - 0.1),
+		PALETTE.white,
+		nil,
+		deco
+	)
+	-- White stripe band all round, with RESCUE lettering on the front.
+	local bandY = base + 8
+	local front = block(
+		model,
+		"Stripe",
+		Vector3.new(20.2, 1.4, 0.2),
+		at * CFrame.new(0, bandY, z0 - 0.1),
+		PALETTE.white,
+		nil,
+		deco
+	)
+	surfaceText(front, Enum.NormalId.Front, "RESCUE", PALETTE.markerRed)
+	block(model, "Stripe", Vector3.new(20.2, 1.4, 0.2), at * CFrame.new(0, bandY, z1 + 0.1), PALETTE.white, nil, deco)
+	for _, x in { -1, 1 } do
+		block(
+			model,
+			"Stripe",
+			Vector3.new(0.2, 1.4, 12.2),
+			at * CFrame.new(x * 10.1, bandY, zc),
+			PALETTE.white,
+			nil,
+			deco
+		)
+	end
+	-- Cyan windows.
+	for _, x in { -6, 6 } do
+		block(
+			model,
+			"Window",
+			Vector3.new(3, 2.4, 0.15),
+			at * CFrame.new(x, base + 4.8, z0 - 0.05),
+			PALETTE.glass,
+			nil,
+			deco
+		)
+		block(
+			model,
+			"Window",
+			Vector3.new(3, 2.4, 0.15),
+			at * CFrame.new(x * 0.85, base + 4.8, z1 + 0.05),
+			PALETTE.glass,
+			nil,
+			deco
+		)
+	end
+	for _, x in { -1, 1 } do
+		for _, z in { zc - 2.5, zc + 2.5 } do
+			block(
+				model,
+				"Window",
+				Vector3.new(0.15, 2.4, 3),
+				at * CFrame.new(x * 10.05, base + 4.8, z),
+				PALETTE.glass,
+				nil,
+				deco
+			)
+		end
+	end
+	-- Red cross disc standing on the roof front edge.
+	local roofTop = base + wallH + 0.8
+	local crossY = roofTop + 3.6
+	for _, x in { -1.5, 1.5 } do
+		rod(
+			model,
+			"SignLeg",
+			(at * CFrame.new(x, roofTop, z0 + 1.1)).Position,
+			(at * CFrame.new(x, crossY - 1.6, z0 + 1.1)).Position,
+			0.3,
+			steel,
+			Enum.Material.Metal,
+			deco
+		)
+	end
+	rod(
+		model,
+		"CrossDisc",
+		(at * CFrame.new(0, crossY, z0 + 1.3)).Position,
+		(at * CFrame.new(0, crossY, z0 + 0.9)).Position,
+		5,
+		PALETTE.white,
+		nil,
+		{ shadow = true }
+	)
+	block(model, "Cross", Vector3.new(3.2, 1, 0.2), at * CFrame.new(0, crossY, z0 + 0.8), PALETTE.markerRed, nil, deco)
+	block(model, "Cross", Vector3.new(1, 3.2, 0.2), at * CFrame.new(0, crossY, z0 + 0.8), PALETTE.markerRed, nil, deco)
+	-- Porch light beside the door.
+	local lamp = blob(
+		model,
+		"DoorLamp",
+		Vector3.new(0.6, 0.8, 0.6),
+		at * CFrame.new(3.2, base + 6.4, z0 - 0.4),
+		PALETTE.warmLight,
+		Enum.Material.Neon,
+		deco
+	)
+	local lampLight = Instance.new("PointLight")
+	lampLight.Range = 18
+	lampLight.Brightness = 1.5
+	lampLight.Color = PALETTE.warmLight
+	lampLight.Parent = lamp
+	-- Two cots inside.
+	for _, x in { -6, 6 } do
+		block(model, "Cot", Vector3.new(3, 0.9, 6.4), at * CFrame.new(x, base + 0.45, 3.6), PALETTE.metal, nil, deco)
+		block(
+			model,
+			"Mattress",
+			Vector3.new(2.8, 0.4, 6.2),
+			at * CFrame.new(x, base + 1.1, 3.6),
+			PALETTE.blue,
+			nil,
+			deco
+		)
+		blob(model, "Pillow", Vector3.new(2, 0.6, 1), at * CFrame.new(x, base + 1.5, 6.1), PALETTE.white, nil, deco)
+	end
+	-- Deck railings (gap at the top of the stairs).
+	local railTop = deckTop + 3
+	local posts = {
+		{ -13, -9 },
+		{ -7.75, -9 },
+		{ -2.5, -9 },
+		{ 2.5, -9 },
+		{ 7.75, -9 },
+		{ 13, -9 },
+		{ -13, 0 },
+		{ 13, 0 },
+		{ -13, 9 },
+		{ 0, 9 },
+		{ 13, 9 },
+	}
+	for _, p in posts do
+		rod(
+			model,
+			"RailPost",
+			(at * CFrame.new(p[1], deckTop, p[2])).Position,
+			(at * CFrame.new(p[1], railTop + 0.2, p[2])).Position,
+			0.35,
+			PALETTE.white,
+			Enum.Material.Metal,
+			{ collide = true, shadow = false }
+		)
+	end
+	local rails = {
+		{ -13, -9, -2.5, -9 },
+		{ 2.5, -9, 13, -9 },
+		{ -13, -9, -13, 9 },
+		{ 13, -9, 13, 9 },
+		{ -13, 9, 13, 9 },
+	}
+	for _, r in rails do
+		for _, y in { railTop, deckTop + 1.5 } do
+			rod(
+				model,
+				"Rail",
+				(at * CFrame.new(r[1], y, r[2])).Position,
+				(at * CFrame.new(r[3], y, r[4])).Position,
+				0.3,
+				PALETTE.white,
+				Enum.Material.Metal,
+				{ collide = y == railTop, shadow = false }
+			)
+		end
+	end
+	-- Stairs: 9 solid steps (sunk 2 studs so they never float) up to the deck front edge.
+	local steps, run = 9, 1.2
+	for i = 1, steps do
+		local top = i * deckTop / steps
+		block(
+			model,
+			"Step",
+			Vector3.new(4.6, top + 2, run),
+			at * CFrame.new(0, (top - 2) / 2, -9 - (steps - i + 0.5) * run),
+			if i % 2 == 0 then wood else darker(wood, 0.9),
+			Enum.Material.WoodPlanks,
+			{ collide = true, shadow = false }
+		)
+	end
+	local stairFoot = -9 - (steps - 0.5) * run
+	for _, x in { -2.45, 2.45 } do
+		rod(
+			model,
+			"RailPost",
+			(at * CFrame.new(x, -0.5, stairFoot)).Position,
+			(at * CFrame.new(x, deckTop / steps + 3.2, stairFoot)).Position,
+			0.35,
+			PALETTE.white,
+			Enum.Material.Metal,
+			{ collide = true, shadow = false }
+		)
+		rod(
+			model,
+			"Rail",
+			(at * CFrame.new(x, deckTop / steps + 3, stairFoot)).Position,
+			(at * CFrame.new(x, railTop, -9)).Position,
+			0.3,
+			PALETTE.white,
+			Enum.Material.Metal,
+			{ collide = true, shadow = false }
+		)
+	end
+	-- Lookout tower on the roof: steel legs, a glazed orange cabin, a rotor and a beacon.
+	local tx, tz = 6, 3
+	local cabinY = roofTop + 6.2
+	for _, dx in { -2, 2 } do
+		for _, dz in { -2, 2 } do
+			rod(
+				model,
+				"TowerLeg",
+				(at * CFrame.new(tx + dx, roofTop - 0.2, tz + dz)).Position,
+				(at * CFrame.new(tx + dx, cabinY, tz + dz)).Position,
+				0.5,
+				steel,
+				Enum.Material.Metal,
+				{ shadow = true }
+			)
+		end
+	end
+	for _, dx in { -2, 2 } do
+		rod(
+			model,
+			"TowerBrace",
+			(at * CFrame.new(tx + dx, roofTop + 0.4, tz - 2)).Position,
+			(at * CFrame.new(tx - dx, cabinY - 0.6, tz - 2)).Position,
+			0.3,
+			steel,
+			Enum.Material.Metal,
+			deco
+		)
+	end
+	block(model, "TowerFloor", Vector3.new(5.6, 0.5, 5.6), at * CFrame.new(tx, cabinY + 0.25, tz), orange, nil, solid)
+	local panelY, glassY = cabinY + 0.5 + 0.8, cabinY + 0.5 + 1.6 + 0.7
+	for _, side in { -1, 1 } do
+		block(
+			model,
+			"TowerPanel",
+			Vector3.new(5.6, 1.6, 0.3),
+			at * CFrame.new(tx, panelY, tz + side * 2.65),
+			orange,
+			nil,
+			deco
+		)
+		block(
+			model,
+			"TowerPanel",
+			Vector3.new(0.3, 1.6, 5.6),
+			at * CFrame.new(tx + side * 2.65, panelY, tz),
+			orange,
+			nil,
+			deco
+		)
+		block(
+			model,
+			"TowerGlass",
+			Vector3.new(5.6, 1.4, 0.3),
+			at * CFrame.new(tx, glassY, tz + side * 2.65),
+			PALETTE.glass,
+			nil,
+			deco
+		)
+		block(
+			model,
+			"TowerGlass",
+			Vector3.new(0.3, 1.4, 5.6),
+			at * CFrame.new(tx + side * 2.65, glassY, tz),
+			PALETTE.glass,
+			nil,
+			deco
+		)
+	end
+	local towerRoof = glassY + 0.7 + 0.25
+	block(model, "TowerRoof", Vector3.new(6.4, 0.5, 6.4), at * CFrame.new(tx, towerRoof, tz), PALETTE.white, nil, {
+		shadow = true,
+	})
+	rod(
+		model,
+		"RotorMast",
+		(at * CFrame.new(tx, towerRoof + 0.25, tz)).Position,
+		(at * CFrame.new(tx, towerRoof + 1.8, tz)).Position,
+		0.25,
+		PALETTE.dark,
+		nil,
+		deco
+	)
+	blob(
+		model,
+		"RotorHub",
+		Vector3.new(0.6, 0.4, 0.6),
+		at * CFrame.new(tx, towerRoof + 1.85, tz),
+		PALETTE.dark,
+		nil,
+		deco
+	)
+	for _, yaw in { 0.3, 0.3 + math.pi / 2 } do
+		block(
+			model,
+			"RotorBlade",
+			Vector3.new(4, 0.12, 0.4),
+			at * CFrame.new(tx, towerRoof + 1.95, tz) * CFrame.Angles(0, yaw, 0),
+			PALETTE.dark,
+			nil,
+			deco
+		)
+	end
+	local beacon = blob(
+		model,
+		"Beacon",
+		Vector3.new(0.6, 0.6, 0.6),
+		at * CFrame.new(tx + 2.6, towerRoof + 0.55, tz + 2.6),
+		PALETTE.markerRed,
+		Enum.Material.Neon,
+		deco
+	)
+	local beaconLight = Instance.new("PointLight")
+	beaconLight.Range = 12
+	beaconLight.Brightness = 2
+	beaconLight.Color = Color3.fromRGB(255, 60, 50)
+	beaconLight.Parent = beacon
+	return model, at * CFrame.new(0, base + wallH / 2, zc), Vector3.new(18.8, wallH, 10.8)
+end
+
+-- Checkpoint ring: a flat bright-green ring (about 10 studs across) of 16 segments lying on
+-- the snow, with a floating green "Checkpoint" label. The invisible PrimaryPart "Centre" carries
+-- the label and a Radius attribute. Named CheckpointRingVisual so it never shadows the camp's
+-- "CheckpointRing" trigger part in a recursive FindFirstChild.
+function AssetFactory.checkpointRing(at: CFrame, radius: number?): Model
+	local R = radius or 5
+	local model = newModel("CheckpointRingVisual")
+	local centre = block(model, "Centre", Vector3.new(1, 0.2, 1), at * CFrame.new(0, 0.1, 0), PALETTE.green, nil, {
+		transparency = 1,
+		shadow = false,
+	})
+	centre:SetAttribute("Radius", R + 0.5)
+	model.PrimaryPart = centre
+	local n = 16
+	local chord = 2 * R * math.sin(math.pi / n)
+	for i = 0, n - 1 do
+		local a = (i + 0.5) / n * math.pi * 2
+		block(
+			model,
+			"Segment",
+			Vector3.new(chord + 0.35, 0.5, 1.0),
+			at * CFrame.new(math.cos(a) * R, 0.1, math.sin(a) * R) * CFrame.Angles(0, math.pi / 2 - a, 0),
+			PALETTE.green,
+			nil,
+			{ shadow = false }
+		)
+	end
+	AssetFactory.billboard(
+		centre,
+		"Checkpoint",
+		PALETTE.green,
+		Color3.fromRGB(10, 70, 25),
+		Vector2.new(9, 2.2),
+		4.5,
+		250
+	)
+	return model
+end
+
+-- Banner: dark navy bar with white trim and bold white text (SurfaceGui) on its front face.
+-- `at` is the centre of the board; the text faces at.LookVector.
+function AssetFactory.banner(at: CFrame, text: string, width: number?): Model
+	local w = width or 16
+	local model = newModel("Banner")
+	local board = block(model, "Board", Vector3.new(w, 2.8, 0.35), at, Color3.fromRGB(16, 30, 70), nil, {
+		shadow = false,
+	})
+	model.PrimaryPart = board
+	for _, y in { -1.55, 1.55 } do
+		block(model, "Trim", Vector3.new(w + 0.3, 0.3, 0.45), at * CFrame.new(0, y, 0), PALETTE.white, nil, {
+			shadow = false,
+		})
+	end
+	surfaceText(board, Enum.NormalId.Front, text, PALETTE.white)
+	return model
+end
+
+-- Wooden sign on two posts with `text` on both faces (camp names, directions).
+function AssetFactory.signPost(at: CFrame, text: string): Model
+	local model = newModel("Sign")
+	local board = block(
+		model,
+		"Board",
+		Vector3.new(5, 1.7, 0.3),
+		at * CFrame.new(0, 4, 0),
+		PALETTE.crate,
+		Enum.Material.WoodPlanks,
+		{ collide = true, shadow = false }
+	)
+	model.PrimaryPart = board
+	for _, x in { -2, 2 } do
+		rod(
+			model,
+			"Post",
+			(at * CFrame.new(x, -0.5, 0)).Position,
+			(at * CFrame.new(x, 5.1, 0)).Position,
+			0.35,
+			PALETTE.pole,
+			Enum.Material.Wood,
+			{ collide = true, shadow = false }
+		)
+	end
+	block(model, "Snow", Vector3.new(5, 0.25, 0.4), at * CFrame.new(0, 4.95, 0), PALETTE.snowCap, nil, {
+		shadow = false,
+	})
+	local textColor = Color3.fromRGB(70, 42, 22)
+	surfaceText(board, Enum.NormalId.Front, text, textColor)
+	surfaceText(board, Enum.NormalId.Back, text, textColor)
 	return model
 end
 

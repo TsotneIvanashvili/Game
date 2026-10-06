@@ -65,7 +65,9 @@ export type Op = {
 
 export type Model = {
 	ops: { Op },
-	heightAt: (x: number, z: number) -> (number, string),
+	-- Surface height (-math.huge where there is no terrain), its material, and the name of the
+	-- operation that decided it (for diagnostics).
+	heightAt: (x: number, z: number) -> (number, string, string),
 	normalAt: (x: number, z: number) -> (number, number, number),
 	slopeAt: (x: number, z: number) -> number,
 	classify: (x: number, z: number) -> string,
@@ -331,11 +333,11 @@ function TerrainModel.new(ops: { Op }): Model
 		end
 	end
 
-	local function heightAt(x: number, z: number): (number, string)
-		local h, mat = -math.huge, "Air"
+	local function heightAt(x: number, z: number): (number, string, string)
+		local h, mat, by = -math.huge, "Air", ""
 		local list = buckets[cellKey(math.floor(x / cell), math.floor(z / cell))]
 		if not list then
-			return h, mat
+			return h, mat, by
 		end
 		for _, i in list do
 			local op = ops[i]
@@ -345,12 +347,12 @@ function TerrainModel.new(ops: { Op }): Model
 					if op.mode == "Fill" then
 						if hi >= h - EPS then
 							h = math.max(h, hi)
-							mat = op.material
+							mat, by = op.material, op.name
 						end
 					elseif op.mode == "Carve" then
 						if h >= lo and h <= hi + EPS then
 							h = lo
-							mat = op.material
+							mat, by = op.material, op.name
 						end
 					elseif op.mode == "Replace" then
 						if mat == op.source and h >= lo - EPS and h <= hi + EPS then
@@ -360,7 +362,7 @@ function TerrainModel.new(ops: { Op }): Model
 				end
 			end
 		end
-		return h, mat
+		return h, mat, by
 	end
 
 	local function normalAt(x: number, z: number): (number, number, number)
@@ -490,10 +492,13 @@ function TerrainModel.ops(layout: any): { Op }
 		addRouteSlab(ops, def)
 	end
 
+	-- Pads: round landings. `sink` lowers the top below `at` so a bend filler never makes a
+	-- step where a sloping slab meets its rim.
 	for _, def in layout.Pads or {} do
 		local at = def.at
 		local y0 = bottomOf(def)
-		table.insert(ops, TerrainModel.cylinderOp(def.name, "Fill", "Glacier", at.X, at.Z, def.radius, y0, at.Y))
+		local top = at.Y - (def.sink or 0)
+		table.insert(ops, TerrainModel.cylinderOp(def.name, "Fill", "Glacier", at.X, at.Z, def.radius, y0, top))
 		table.insert(
 			ops,
 			TerrainModel.cylinderOp(
@@ -503,16 +508,16 @@ function TerrainModel.ops(layout: any): { Op }
 				at.X,
 				at.Z,
 				def.radius,
-				at.Y - TerrainModel.SNOW_DEPTH,
-				at.Y
+				top - TerrainModel.SNOW_DEPTH,
+				top
 			)
 		)
 	end
 
 	for _, def in layout.Shelves or {} do
 		local mn, mx = def.min, def.max
-		local y0 = if typeof(def.bottom) == "number" then def.bottom else TerrainModel.DEFAULT_BOTTOM
-		table.insert(ops, TerrainModel.aabbOp(def.name, "Fill", "Glacier", mn.X, y0, mn.Z, mx.X, mx.Y, mx.Z))
+		-- min.Y is the bottom of the Glacier body, max.Y its (snow-topped) surface.
+		table.insert(ops, TerrainModel.aabbOp(def.name, "Fill", "Glacier", mn.X, mn.Y, mn.Z, mx.X, mx.Y, mx.Z))
 		table.insert(
 			ops,
 			TerrainModel.aabbOp(
@@ -685,7 +690,8 @@ function TerrainModel.markers(layout: any, model: Model, spacing: number, offset
 	end
 	local carried = 0
 	local lastRoute = ""
-	for _, s in TerrainModel.segments(layout) do
+	local all = TerrainModel.segments(layout)
+	for _, s in all do
 		if s.route ~= lastRoute then
 			lastRoute = s.route
 			carried = spacing * 0.5
@@ -706,7 +712,11 @@ function TerrainModel.markers(layout: any, model: Model, spacing: number, offset
 				for _, side in { 1, -1 } do
 					local mx, mz = px + uz * offset * side, pz - ux * offset * side
 					local h = model.heightAt(mx, mz)
-					if math.abs(h - py) < 3 and model.slopeAt(mx, mz) < 35 then
+					if
+						math.abs(h - py) < 3
+						and model.slopeAt(mx, mz) < 35
+						and TerrainModel.distanceToRoute(all, mx, mz) >= offset - 1
+					then
 						table.insert(out, { x = mx, y = h, z = mz, yaw = math.atan2(ux, uz) })
 						break
 					end

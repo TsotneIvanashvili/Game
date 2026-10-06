@@ -1,248 +1,474 @@
 --!strict
--- Hand-authored layout of the vertical-slice mountain section, as data.
--- WorldBuilder turns this into terrain and greybox props when the place file has no
--- hand-built "Mountain" model yet. Once a level designer builds the real map in Studio,
--- they tag objects with the same CollectionService tags and this file stops mattering.
+-- Hand-authored layout of the generated mountain (v2: all-snow polar mountain), as data.
+-- WorldBuilder turns this into terrain and props when the place has no hand-built
+-- Workspace.Mountain. Shared/Logic/TerrainModel evaluates the same data analytically (surface
+-- height, slope, top material), so everything is placed from the model, never by raycasts.
 --
--- Axes: +Z is uphill, +Y is up, X is lateral. Units are studs.
+-- Axes: +Z is uphill, +Y is up, X is lateral. Units are studs. Elevation shown to players is
+-- 300 m + 4 m/stud (GameConfig), so y = 0 reads 300 m and the summit (y = 800) reads 3500 m.
 --
--- Routes in the slice:
---   Technical: forest trail -> 55-stud rock cliff (rest ledge halfway) -> snow slope -> Ridge Camp
---   Safe:      forest trail -> long gravel ramp on the east side (rockfall gully) -> Ridge Camp
---   Emergency: east ravine floor, a slow crawl back up if you fall off the safe ramp
---   Beyond camp: snow slope -> 30-stud ice wall (ice axe) or a longer walk round -> Ridge Col
-
--- A slab is a terrain block whose top surface runs along the line from -> to.
-export type Slab = {
-	name: string,
-	from: Vector3,
-	to: Vector3,
-	width: number,
-	thickness: number,
-	material: string, -- Enum.Material name
-}
-
-export type Block = {
-	name: string,
-	center: Vector3,
-	size: Vector3,
-	material: string,
-}
+-- The route (about 8,000 studs, 15-25 minutes for a fit player):
+--   Base Camp (flat basin, y 0)
+--   -> snow valley (gentle, 0 -> 40) between glacier-flanked mountains (avalanche slope)
+--   -> the Headwall: four snow benches stacked 40 studs apart, joined by ramps in the corners
+--   -> Camp 1 (y 200)
+--   -> crevasse field: four crevasses crossed by rope bridges (escape ramps inside)
+--   -> 48-stud ice wall: ladder, or the long walk-round ramp to the west
+--   -> glacier terraces: four more benches, serac fall from the ice cliff above the third
+--   -> Camp 2 (y 450)
+--   -> exposed knife-edge ridge: rope fences, a notch with a rope bridge, an ice step with a
+--      ladder, fixed rope on the final slope
+--   -> Summit (y 800): small flat top, flag and cairn, SectionEnd
+--
+-- Terrain primitives (TerrainModel.ops builds them in this order):
+--   Ground    big Snow tiles everywhere (top y 0) so no void or world floor is ever visible
+--   Mountains Glacier balls (x, z, r, top) whose gentle tops are re-painted Snow
+--   Crests    45-degree rolled prisms under the ridge walkway (Glacier flanks)
+--   Slabs     route pieces: Glacier body + Snow top along from -> to (vertical Glacier sides)
+--   Pads      round flat landings (Glacier body + Snow top)
+--   Shelves   flat axis-aligned benches / camp shelves (min.Y = bottom, max.Y = top)
+--   Crevasses Air cuts across the surface (depth below the local top) + escape ramps
+--   Outcrops  small Rock balls near the summit
 
 local V = Vector3.new
 
+local function along(a: Vector3, b: Vector3, t: number): Vector3
+	return V(a.X + (b.X - a.X) * t, a.Y + (b.Y - a.Y) * t, a.Z + (b.Z - a.Z) * t)
+end
+
+-- Key points (shared by terrain, route and props) ----------------------------------------------
+local R0 = V(0, 450, 3100) -- ridge start, north edge of the Camp 2 shelf
+local R1 = V(-160, 520, 3380)
+local R2 = V(60, 590, 3640) -- foot of the ridge ice step
+local STEP = V(60, 618, 3700) -- top of the ice step (north edge of its shelf)
+local R3 = V(-60, 690, 3920)
+local R4 = V(20, 755, 4060)
+local SUMMIT = V(0, 800, 4160)
+local SUMMIT_RADIUS = 18
+-- Where the last pitch meets the flat summit pad's rim.
+local SUMMIT_EDGE = (function()
+	local dx, dz = SUMMIT.X - R4.X, SUMMIT.Z - R4.Z
+	local t = 1 - SUMMIT_RADIUS / math.sqrt(dx * dx + dz * dz)
+	return V(R4.X + dx * t, SUMMIT.Y, R4.Z + dz * t)
+end)()
+local NOTCH = along(R1, R2, 0.5)
+local NOTCH_HALF = 13 / (R2 - R1).Magnitude -- bridge anchors 13 studs either side
+local RIDGE_DIR = V(R2.X - R1.X, 0, R2.Z - R1.Z)
+
+-- Crevasse field: plateau top is y = 200 + 0.06 * (z - 1700).
+local function plateauY(z: number): number
+	return 200 + 0.06 * (z - 1700)
+end
+
 local WorldLayout = {
+	Version = 2,
 	Seed = 7331,
 
+	-- Ground under and around everything (top y 0). The outer area is a snow skirt that the
+	-- enclosing mountains and the haze hide; it means no sightline ever ends in the void.
+	Ground = { x0 = -2400, z0 = -2000, x1 = 2400, z1 = 6400, top = 0, thickness = 8, tile = 800 },
+
+	-- Every point inside these bounds must have terrain (checked by tests).
+	Bounds = { x0 = -900, z0 = -700, x1 = 900, z1 = 4700 },
+
+	Mountains = {
+		-- South wall behind Base Camp
+		{ x = 0, z = -340, r = 260, top = 360 },
+		{ x = -300, z = -260, r = 240, top = 320 },
+		{ x = 300, z = -280, r = 240, top = 340 },
+		-- Base Camp flanks
+		{ x = -360, z = -20, r = 240, top = 300 },
+		{ x = 360, z = 20, r = 240, top = 320 },
+		-- Valley walls
+		{ x = -360, z = 260, r = 230, top = 330 }, -- the avalanche slope
+		{ x = 390, z = 300, r = 240, top = 300 },
+		{ x = -380, z = 520, r = 240, top = 380 },
+		{ x = 380, z = 560, r = 230, top = 340 },
+		{ x = 330, z = 700, r = 220, top = 300 },
+		{ x = -560, z = 780, r = 240, top = 400 },
+		-- Headwall flanks
+		{ x = -560, z = 1080, r = 260, top = 440 },
+		{ x = 540, z = 1060, r = 250, top = 420 },
+		{ x = -560, z = 1380, r = 260, top = 480 },
+		{ x = 560, z = 1360, r = 260, top = 470 },
+		-- Crevasse field flanks
+		{ x = -560, z = 1700, r = 260, top = 520 },
+		{ x = 560, z = 1680, r = 260, top = 500 },
+		{ x = -560, z = 2000, r = 270, top = 540 },
+		{ x = 560, z = 2000, r = 280, top = 560 },
+		{ x = -580, z = 2300, r = 300, top = 600 },
+		{ x = 630, z = 2300, r = 290, top = 580 },
+		-- Glacier terrace flanks
+		{ x = -640, z = 2600, r = 300, top = 600 },
+		{ x = 640, z = 2620, r = 300, top = 590 },
+		{ x = -640, z = 2900, r = 300, top = 600 },
+		{ x = 640, z = 2920, r = 300, top = 600 },
+		-- Domes under the ridge: they hold up the crests (60+ studs under the walkway)
+		{ x = -80, z = 3240, r = 300, top = 420 },
+		{ x = -50, z = 3510, r = 300, top = 490 },
+		{ x = 0, z = 3800, r = 320, top = 590 },
+		{ x = 10, z = 4110, r = 350, top = 700 }, -- summit cone
+		{ x = 0, z = 4120, r = 180, top = 760 }, -- summit shoulder (sits on the cone)
+		{ x = -200, z = 3330, r = 220, top = 440 }, -- outside of the bends
+		{ x = 110, z = 3580, r = 260, top = 510 },
+		{ x = -130, z = 3870, r = 300, top = 610 },
+		-- Peaks around the ridge and summit: a base dome on the ground and a tip on top of it
+		{ x = -620, z = 3300, r = 300, top = 600 },
+		{ x = -620, z = 3300, r = 150, top = 800 },
+		{ x = 600, z = 3300, r = 300, top = 600 },
+		{ x = 600, z = 3300, r = 140, top = 760 },
+		{ x = -600, z = 3800, r = 300, top = 600 },
+		{ x = -600, z = 3800, r = 180, top = 880 },
+		{ x = 600, z = 3780, r = 300, top = 600 },
+		{ x = 600, z = 3780, r = 160, top = 840 },
+		{ x = -480, z = 4400, r = 300, top = 600 },
+		{ x = -480, z = 4400, r = 180, top = 880 },
+		{ x = 480, z = 4420, r = 300, top = 600 },
+		{ x = 480, z = 4420, r = 170, top = 880 },
+		{ x = 0, z = 4720, r = 300, top = 600 },
+		{ x = 0, z = 4720, r = 200, top = 920 },
+	},
+
+	-- Knife-edge crests under the ridge walkway (top edge `drop` studs under the route line).
+	Crests = {
+		{ name = "CrestA", from = R0, to = R1, size = 140, drop = 4 },
+		{ name = "CrestB", from = R1, to = R2, size = 140, drop = 4 },
+		{ name = "CrestC", from = STEP, to = R3, size = 140, drop = 4 },
+		{ name = "CrestD", from = R3, to = R4, size = 140, drop = 4 },
+		{ name = "CrestE", from = R4, to = SUMMIT_EDGE, size = 140, drop = 4 },
+	},
+
 	Slabs = {
-		{ name = "BaseCamp", from = V(0, 0, -120), to = V(0, 0, 90), width = 280, thickness = 40, material = "Grass" },
+		-- Snow valley
+		{ name = "Valley1", from = V(0, 0, 90), to = V(40, 12, 420), width = 200 },
+		{ name = "Valley2", from = V(40, 12, 420), to = V(-40, 26, 720), width = 200 },
+		{ name = "Valley3", from = V(-40, 26, 720), to = V(-250, 40, 920), width = 160 },
+		-- Headwall corner ramps (each climbs inside the lower bench's row)
+		{ name = "HeadRamp1", from = V(250, 40, 980), to = V(250, 80, 1080), width = 50 },
+		{ name = "HeadRamp2", from = V(-250, 80, 1140), to = V(-250, 120, 1240), width = 50 },
+		{ name = "HeadRamp3", from = V(250, 120, 1300), to = V(250, 160, 1400), width = 50 },
+		{ name = "HeadRamp4", from = V(-250, 160, 1460), to = V(-250, 200, 1560), width = 50 },
+		-- Crevasse field (rises 36 over 600)
+		{ name = "Plateau", from = V(0, 200, 1700), to = V(0, 236, 2300), width = 560 },
+		-- Ice wall walk-round: a long ramp along the foot of the wall
+		{ name = "WallBypass", from = V(120, plateauY(2288), 2288), to = V(-200, 284, 2288), width = 24 },
+		-- Glacier terrace corner ramps
+		{ name = "TerraceRamp1", from = V(310, 284, 2360), to = V(310, 330, 2460), width = 50 },
+		{ name = "TerraceRamp2", from = V(-310, 330, 2520), to = V(-310, 380, 2640), width = 50 },
+		{ name = "TerraceRamp3", from = V(310, 380, 2700), to = V(310, 420, 2800), width = 50 },
+		{ name = "TerraceRamp4", from = V(-310, 420, 2860), to = V(-310, 450, 2960), width = 50 },
+		-- Ridge walkway (narrow, sits on the crests)
+		{ name = "Ridge1", from = R0, to = R1, width = 18, thickness = 24 },
+		{ name = "Ridge2", from = R1, to = R2, width = 18, thickness = 24 },
+		{ name = "Ridge3", from = STEP, to = R3, width = 18, thickness = 24 },
+		{ name = "Ridge4", from = R3, to = R4, width = 18, thickness = 24 },
+		{ name = "Ridge5", from = R4, to = SUMMIT_EDGE, width = 18, thickness = 24 },
+	},
+
+	Pads = {
+		-- Bend fillers: they plug the outer corner where two slabs meet at an angle.
+		{ name = "ValleyBend1", at = V(40, 12, 420), radius = 60, sink = 3 },
+		{ name = "ValleyBend2", at = V(-40, 26, 720), radius = 60, sink = 3 },
+		{ name = "RidgeBend1", at = R1, radius = 10, sink = 2.8, bottom = 420 },
+		{ name = "RidgeBend3", at = R3, radius = 10, sink = 3.5, bottom = 600 },
+		{ name = "RidgeBend4", at = R4, radius = 10, sink = 4.5, bottom = 660 },
+		{ name = "SummitTop", at = SUMMIT, radius = SUMMIT_RADIUS, bottom = 660 },
+	},
+
+	Shelves = {
+		{ name = "BaseCampFloor", min = V(-110, -20, -90), max = V(110, 0, 90) },
+		-- Headwall benches (flat, 40-stud Glacier risers between them)
+		{ name = "Bench1", min = V(-280, 0, 920), max = V(280, 40, 1080) },
+		{ name = "Bench2", min = V(-280, 0, 1080), max = V(280, 80, 1240) },
+		{ name = "Bench3", min = V(-280, 0, 1240), max = V(280, 120, 1400) },
+		{ name = "Bench4", min = V(-280, 0, 1400), max = V(280, 160, 1560) },
+		{ name = "Camp1Shelf", min = V(-280, 0, 1560), max = V(280, 200, 1700) },
+		-- Top of the ice wall (its south face at z 2300 is the wall)
+		{ name = "IceWallTop", min = V(-340, 0, 2300), max = V(340, 284, 2460) },
+		-- Glacier terraces
+		{ name = "Terrace2", min = V(-340, 0, 2460), max = V(340, 330, 2640) },
+		{ name = "Terrace3", min = V(-340, 0, 2640), max = V(340, 380, 2800) },
+		{ name = "Terrace4", min = V(-340, 0, 2800), max = V(340, 420, 2960) },
+		{ name = "Camp2Shelf", min = V(-340, 0, 2960), max = V(340, 450, 3100) },
+		-- Ridge ice step
+		{ name = "RidgeStep", min = V(34, 420, 3644), max = V(86, 618, 3700) },
+		-- Canyon walls: tall Glacier cliffs along both sides of the corridor, so the route is
+		-- enclosed and never borders a slot between a shelf and a round mountain.
+		{ name = "HeadwallWallW", min = V(-360, 0, 920), max = V(-280, 230, 1700) },
+		{ name = "HeadwallWallE", min = V(280, 0, 920), max = V(360, 230, 1700) },
+		{ name = "PlateauWallW", min = V(-360, 0, 1700), max = V(-280, 280, 2300) },
+		{ name = "PlateauWallE", min = V(280, 0, 1700), max = V(360, 270, 2300) },
+		{ name = "TerraceWallW", min = V(-420, 0, 2300), max = V(-340, 490, 3100) },
+		{ name = "TerraceWallE", min = V(340, 0, 2300), max = V(420, 480, 3100) },
+	},
+
+	Crevasses = {
 		{
-			name = "ForestTrail",
-			from = V(0, 0, 90),
-			to = V(0, 60, 400),
-			width = 260,
-			thickness = 60,
-			material = "Grass",
-		},
-		{
-			name = "TrailPath",
-			from = V(0, 0.2, 60),
-			to = V(0, 60.2, 400),
-			width = 12,
-			thickness = 3,
-			material = "Ground",
-		},
-		{
-			name = "CliffBase",
-			from = V(20, 60, 400),
-			to = V(20, 60, 450),
-			width = 300,
-			thickness = 60,
-			material = "Ground",
-		},
-		{
-			name = "UpperPlateau",
-			from = V(0, 115, 500),
-			to = V(0, 115, 560),
-			width = 200,
-			thickness = 60,
-			material = "Ground",
-		},
-		{
-			name = "SnowSlope",
-			from = V(0, 115, 560),
-			to = V(0, 150, 720),
-			width = 200,
-			thickness = 60,
-			material = "Snow",
-		},
-		{
-			name = "RidgeCamp",
-			from = V(20, 150, 720),
-			to = V(20, 150, 830),
-			width = 360,
-			thickness = 60,
-			material = "Snow",
-		},
-		{
-			name = "SafeRamp",
-			from = V(150, 60, 450),
-			to = V(150, 150, 720),
-			width = 40,
-			thickness = 30,
-			material = "Ground",
-		},
-		{
-			name = "OuterRidge",
-			from = V(188, 92, 450),
-			to = V(188, 182, 720),
-			width = 36,
-			thickness = 70,
-			material = "Rock",
-		},
-		{
-			name = "Ravine",
-			from = V(115, 40, 450),
-			to = V(115, 150, 790),
-			width = 34,
-			thickness = 20,
-			material = "Mud",
-		},
-		{
-			name = "UpperSnow",
-			from = V(0, 150, 830),
-			to = V(0, 230, 1000),
-			width = 220,
-			thickness = 70,
-			material = "Snow",
-		},
-		{
-			name = "IceBypass",
-			from = V(92, 230, 990),
-			to = V(92, 260, 1080),
-			width = 30,
-			thickness = 40,
-			material = "Snow",
-		},
-		{
-			name = "RidgeCol",
-			from = V(0, 260, 1030),
-			to = V(0, 260, 1110),
-			width = 200,
-			thickness = 70,
-			material = "Snow",
-		},
-		{
-			name = "WestWall",
-			from = V(-140, 25, -120),
-			to = V(-140, 85, 400),
-			width = 30,
-			thickness = 120,
-			material = "Rock",
-		},
-		{
-			name = "EastWall",
-			from = V(142, 25, -120),
-			to = V(142, 80, 360),
+			name = "Crevasse1",
+			at = V(0, 0, 1800),
+			dir = V(1, 0, 0),
+			length = 576,
 			width = 26,
-			thickness = 120,
-			material = "Rock",
+			depth = 30,
+			ramp = { side = -1, width = 8, low = -150, high = -210 },
 		},
-	} :: { Slab },
+		{
+			name = "Crevasse2",
+			at = V(0, 0, 1920),
+			dir = V(1, 0, 0),
+			length = 576,
+			width = 30,
+			depth = 32,
+			ramp = { side = -1, width = 8, low = 150, high = 214 },
+		},
+		{
+			name = "Crevasse3",
+			at = V(0, 0, 2040),
+			dir = V(1, 0, 0),
+			length = 576,
+			width = 24,
+			depth = 30,
+			ramp = { side = -1, width = 8, low = -150, high = -210 },
+		},
+		{
+			name = "Crevasse4",
+			at = V(0, 0, 2160),
+			dir = V(1, 0, 0),
+			length = 576,
+			width = 28,
+			depth = 32,
+			ramp = { side = -1, width = 8, low = 150, high = 214 },
+		},
+		-- Notch in the ridge, crossed by a rope bridge.
+		{
+			name = "RidgeNotch",
+			at = NOTCH,
+			dir = V(RIDGE_DIR.Z, 0, -RIDGE_DIR.X),
+			length = 80,
+			width = 18,
+			depth = 40,
+		},
+	},
 
-	Blocks = {
-		{ name = "Cliff", center = V(0, 72.5, 475), size = V(200, 85, 50), material = "Rock" },
-		{ name = "RestLedge", center = V(0, 86, 446.5), size = V(36, 4, 7), material = "Slate" },
-		{ name = "IceWall", center = V(0, 231, 1015), size = V(90, 62, 30), material = "Glacier" },
-	} :: { Block },
+	Outcrops = {
+		{ x = 34, z = 4118, r = 12, top = 772 },
+		{ x = -30, z = 4176, r = 10, top = 786 },
+		{ x = 22, z = 4196, r = 9, top = 792 },
+		{ x = -36, z = 4060, r = 14, top = 738 },
+	},
 
-	-- Shallow trench carved then filled with water: from, to, width.
-	Stream = { from = V(-75, 0, 40), to = V(-75, 60, 400), width = 8, depth = 2 },
-
+	-- Camps. Passed as-is to CampKit.build(def, groundAt):
+	--   id, name, index (1 = Base Camp), center (on the ground), size ("Base" | "Small"),
+	--   supplyTable (LoadoutConfig.SupplyAllowance key), spawn (on the ground),
+	--   yaw (degrees about +Y; 0 = the camp's front faces +Z, where the trail continues),
+	--   footprint (X = width, Z = depth of the guaranteed-flat kit area), radius (CampService)
 	Camps = {
 		{
 			id = "BaseCamp",
 			name = "Base Camp",
 			index = 1,
-			center = V(0, 0, -40),
-			spawn = V(0, 0, -58),
-			fire = V(0, 0, -28),
-			logbook = V(-12, 0, -14),
-			supply = V(38, 0, -40),
+			center = V(0, 0, 0),
+			size = "Base",
 			supplyTable = "BaseCamp",
-			outfitter = V(24, 0, -58),
-			water = { pos = V(-26, 0, -22), treated = true, kind = "Pump" },
-			cabin = { pos = V(-48, 0, -62), size = V(26, 12, 20) },
+			spawn = V(0, 0, -45),
+			yaw = 0,
+			footprint = V(180, 0, 140),
+			radius = 110,
 		},
 		{
-			id = "RidgeCamp",
-			name = "Ridge Camp",
+			id = "Camp1",
+			name = "Camp 1",
 			index = 2,
-			center = V(0, 150, 775),
-			spawn = V(0, 150, 786),
-			fire = V(0, 150, 768),
-			logbook = V(14, 150, 756),
-			supply = V(34, 150, 778),
-			supplyTable = "RidgeCamp",
-			water = { pos = V(-16, 150, 760), treated = true, kind = "Meltwater" },
-			cabin = { pos = V(-44, 150, 796), size = V(22, 11, 18) },
+			center = V(-150, 200, 1630),
+			size = "Small",
+			supplyTable = "Camp1",
+			spawn = V(-150, 200, 1608),
+			yaw = 0,
+			footprint = V(70, 0, 60),
+			radius = 50,
+		},
+		{
+			id = "Camp2",
+			name = "Camp 2",
+			index = 3,
+			center = V(-200, 450, 3030),
+			size = "Small",
+			supplyTable = "Camp2",
+			spawn = V(-200, 450, 3008),
+			yaw = 0,
+			footprint = V(70, 0, 60),
+			radius = 50,
 		},
 	},
 
-	-- Stream points where bottles can be refilled with untreated water.
-	WaterSources = { V(-75, 18, 130), V(-75, 40, 270), V(-75, 56, 380) },
+	-- The main route, point by point. `via` names how the segment ARRIVING at a point is
+	-- crossed: nil = walked, "Bridge" = rope bridge, "Ladder" = ladder (previous point = foot).
+	Route = {
+		{ id = "BaseCamp", at = V(0, 0, 0) },
+		{ at = V(0, 0, 90) },
+		{ at = V(40, 12, 420) },
+		{ at = V(-40, 26, 720) },
+		{ id = "HeadwallFoot", at = V(-250, 40, 920) },
+		{ at = V(-250, 40, 950) },
+		{ at = V(250, 40, 950) },
+		{ at = V(250, 40, 980) },
+		{ at = V(250, 80, 1080) },
+		{ at = V(250, 80, 1110) },
+		{ at = V(-250, 80, 1110) },
+		{ at = V(-250, 80, 1140) },
+		{ at = V(-250, 120, 1240) },
+		{ at = V(-250, 120, 1270) },
+		{ at = V(250, 120, 1270) },
+		{ at = V(250, 120, 1300) },
+		{ at = V(250, 160, 1400) },
+		{ at = V(250, 160, 1430) },
+		{ at = V(-250, 160, 1430) },
+		{ at = V(-250, 160, 1460) },
+		{ at = V(-250, 200, 1560) },
+		{ id = "Camp1", at = V(-150, 200, 1630) },
+		{ at = V(-110, 200, 1700) },
+		{ id = "K1S", at = V(-80, plateauY(1783), 1783) },
+		{ id = "K1N", at = V(-80, plateauY(1817), 1817), via = "Bridge" },
+		{ id = "K2S", at = V(40, plateauY(1901), 1901) },
+		{ id = "K2N", at = V(40, plateauY(1939), 1939), via = "Bridge" },
+		{ id = "K3S", at = V(-40, plateauY(2024), 2024) },
+		{ id = "K3N", at = V(-40, plateauY(2056), 2056), via = "Bridge" },
+		{ id = "K4S", at = V(60, plateauY(2142), 2142) },
+		{ id = "K4N", at = V(60, plateauY(2178), 2178), via = "Bridge" },
+		{ id = "WallFoot", at = V(200, plateauY(2297), 2297) },
+		{ id = "WallTop", at = V(200, 284, 2306), via = "Ladder" },
+		{ id = "ShelfEast", at = V(310, 284, 2330) },
+		{ at = V(310, 284, 2360) },
+		{ at = V(310, 330, 2460) },
+		{ at = V(310, 330, 2490) },
+		{ at = V(-310, 330, 2490) },
+		{ at = V(-310, 330, 2520) },
+		{ at = V(-310, 380, 2640) },
+		{ at = V(-310, 380, 2670) },
+		{ at = V(310, 380, 2670) },
+		{ at = V(310, 380, 2700) },
+		{ at = V(310, 420, 2800) },
+		{ at = V(310, 420, 2830) },
+		{ at = V(-310, 420, 2830) },
+		{ at = V(-310, 420, 2860) },
+		{ at = V(-310, 450, 2960) },
+		{ id = "Camp2", at = V(-200, 450, 3030) },
+		{ at = V(0, 450, 3070) },
+		{ id = "RidgeStart", at = R0 },
+		{ id = "R1", at = R1 },
+		{ id = "NotchS", at = along(R1, R2, 0.5 - NOTCH_HALF) },
+		{ id = "NotchN", at = along(R1, R2, 0.5 + NOTCH_HALF), via = "Bridge" },
+		{ id = "R2", at = R2 },
+		{ id = "StepTop", at = V(60, 618, 3650), via = "Ladder" },
+		{ at = STEP },
+		{ id = "R3", at = R3 },
+		{ id = "R4", at = R4 },
+		{ id = "SummitEdge", at = SUMMIT_EDGE },
+		{ id = "Summit", at = SUMMIT },
+	},
 
-	-- Fallen logs (wood sources): position, wood per log, respawn seconds (nil = never).
+	-- Optional routes (also marked). They start and end on main-route points.
+	Alternates = {
+		{
+			name = "IceWallBypass",
+			points = {
+				{ at = V(60, plateauY(2178), 2178) },
+				{ at = V(140, plateauY(2288), 2288) },
+				{ at = V(120, plateauY(2288), 2288) },
+				{ at = V(-200, 284, 2288) },
+				{ at = V(-200, 284, 2330) },
+				{ at = V(310, 284, 2330) },
+			},
+		},
+	},
+
+	BridgeWidth = 5,
+	MarkerSpacing = 40,
+	MarkerOffset = 6,
+
+	-- Rope fences along the exposed ridge (route ids, inclusive) at `offset` from the centre.
+	Fences = {
+		{ from = "RidgeStart", to = "R1", offset = 7.5, sides = { 1, -1 } },
+		{ from = "R1", to = "NotchS", offset = 7.5, sides = { 1, -1 } },
+		{ from = "NotchN", to = "R2", offset = 7.5, sides = { 1, -1 } },
+		{ from = "R3", to = "R4", offset = 7.5, sides = { 1 } },
+	},
+	-- Fixed ropes on the steepest pitches (decorative handlines).
+	FixedRopes = {
+		{ from = "R4", to = "Summit", offset = 4, side = -1 },
+		{ from = "R3", to = "R4", offset = 4, side = -1 },
+	},
+
+	-- Warning signs: position (y from terrain) and a point the sign faces.
+	Signs = {
+		{ at = V(70, 0, 380), toward = V(0, 0, 90), text = "AVALANCHE RISK" },
+		{ at = V(-150, 0, 1712), toward = V(-150, 0, 1630), text = "CREVASSES" },
+		{ at = V(170, 0, 2280), toward = V(60, 0, 2178), text = "ICE WALL" },
+		{ at = V(110, 0, 2262), toward = V(60, 0, 2178), text = "LONG WAY ROUND" },
+		{ at = V(240, 0, 2690), toward = V(-310, 0, 2670), text = "SERAC FALL" },
+		{ at = V(-14, 0, 3090), toward = V(-200, 0, 3030), text = "HIGH WINDS" },
+	},
+
+	-- Deadwood (WoodSource): position (y from terrain), wood per log, respawn seconds (nil =
+	-- never). Wood is scarce: ten logs near Base Camp, three near Camp 1, one finite woodpile
+	-- at Camp 2. Nothing grows higher up.
 	WoodSources = {
-		{ pos = V(-40, 0, 40), wood = 4, respawn = 180 },
-		{ pos = V(55, 0, 70), wood = 4, respawn = 180 },
-		{ pos = V(-90, 10, 140), wood = 3, respawn = 180 },
-		{ pos = V(80, 15, 170), wood = 4, respawn = 180 },
-		{ pos = V(-30, 25, 220), wood = 3, respawn = 180 },
-		{ pos = V(95, 35, 260), wood = 4, respawn = 180 },
-		{ pos = V(-100, 45, 320), wood = 3, respawn = 180 },
-		{ pos = V(40, 50, 350), wood = 3, respawn = 180 },
-		{ pos = V(-60, 60, 425), wood = 3, respawn = 240 },
-		{ pos = V(150, 95, 560), wood = 2, respawn = 300 },
-		{ pos = V(-70, 115, 530), wood = 2, respawn = 300 },
-		{ pos = V(60, 128, 620), wood = 2, respawn = 400 },
-		{ pos = V(-120, 150, 800), wood = 6, respawn = nil }, -- the camp woodpile: finite
+		{ pos = V(-95, 0, 110), wood = 3, respawn = 240 },
+		{ pos = V(124, 0, -30), wood = 3, respawn = 240 },
+		{ pos = V(-70, 0, 150), wood = 4, respawn = 240 },
+		{ pos = V(100, 0, 190), wood = 3, respawn = 240 },
+		{ pos = V(-40, 0, 250), wood = 3, respawn = 240 },
+		{ pos = V(115, 0, 330), wood = 4, respawn = 240 },
+		{ pos = V(-60, 0, 380), wood = 3, respawn = 240 },
+		{ pos = V(120, 0, 450), wood = 3, respawn = 240 },
+		{ pos = V(-90, 0, 560), wood = 3, respawn = 240 },
+		{ pos = V(70, 0, 620), wood = 3, respawn = 240 },
+		{ pos = V(-250, 0, 1650), wood = 3, respawn = 420 },
+		{ pos = V(-40, 0, 1620), wood = 2, respawn = 420 },
+		{ pos = V(110, 0, 1660), wood = 3, respawn = 420 },
+		{ pos = V(-290, 0, 3060), wood = 8, respawn = nil, woodpile = true },
 	},
+	-- Melt water comes from snow at fires now; camps may add their own barrels.
+	WaterSources = {} :: { Vector3 },
 
-	-- Trees: scattered by seed inside these rectangles (x0, z0, x1, z1, count, height scale).
-	TreeRegions = {
-		{ x0 = -120, z0 = 0, x1 = 120, z1 = 395, count = 120, scale = 1.0 },
-		{ x0 = -125, z0 = -115, x1 = 125, z1 = 0, count = 30, scale = 1.0 },
-		{ x0 = -95, z0 = 505, x1 = 95, z1 = 560, count = 10, scale = 0.7 },
-		{ x0 = -95, z0 = 560, x1 = 95, z1 = 690, count = 8, scale = 0.5 },
+	-- Sparse snowy pine clusters, near Base Camp only: centre, radius, count.
+	TreeClusters = {
+		{ x = -130, z = 130, r = 22, count = 5 },
+		{ x = 125, z = 110, r = 18, count = 4 },
+		{ x = -80, z = 200, r = 24, count = 5 },
+		{ x = 120, z = 270, r = 20, count = 4 },
+		{ x = -100, z = 470, r = 18, count = 3 },
+		{ x = 110, z = 560, r = 16, count = 3 },
 	},
-	TreeKeepClear = {
-		-- x, z, radius: camp clearings and the path stay open
-		{ x = 0, z = -40, r = 55 },
-		{ x = 0, z = 775, r = 60 },
-	},
-	TrailHalfWidth = 9,
+	-- Snow-covered rocks scattered beside the route (count, min/max distance off the trail).
+	RockScatter = { count = 150, near = 14, far = 80, minSize = 2, maxSize = 7 },
 
-	Rocks = {
-		{ x0 = -125, z0 = -110, x1 = 125, z1 = 440, count = 45 },
-		{ x0 = -95, z0 = 500, x1 = 95, z1 = 1000, count = 30 },
-	},
-
+	-- Rockfall / serac fall hazards (DisasterService contract: invisible box covering where
+	-- players stand, Release attachments, PushDirection). Release y = terrain + 4.
 	RockfallZones = {
 		{
-			name = "EastGully",
-			zoneCenter = V(150, 115, 600),
-			zoneSize = V(70, 90, 130),
-			releasePoints = { V(182, 150, 560), V(182, 158, 600), V(182, 165, 640) },
-			pushDirection = V(-1, 0, 0),
+			name = "ValleyAvalanche",
+			zoneCenter = V(-10, 40, 470),
+			zoneSize = V(220, 90, 240),
+			releasePoints = { V(-200, 0, 400), V(-205, 0, 470), V(-200, 0, 540) },
+			pushDirection = V(1, 0, 0),
+		},
+		{
+			name = "SeracFall",
+			zoneCenter = V(0, 400, 2700),
+			zoneSize = V(560, 60, 120),
+			releasePoints = { V(-140, 0, 2812), V(0, 0, 2812), V(140, 0, 2812) },
+			pushDirection = V(0, 0, -1),
 		},
 	},
 
-	SectionEnd = { pos = V(0, 260, 1070), radius = 22 },
+	SectionEnd = { pos = SUMMIT, radius = 16 },
 
-	-- Below this height a player is "lost in a crevasse" and is recovered to their checkpoint.
+	-- Below this height a player is "lost" and is recovered to their checkpoint. The ground
+	-- top is y 0, so only falling off the world triggers it.
 	SafetyNetY = -30,
-	WorldFloor = { center = V(0, -42, 500), size = V(900, 4, 1500) },
+	-- Invisible catch floor far below the terrain so a fall never goes on forever.
+	SafetyFloorY = -120,
 }
 
 return WorldLayout

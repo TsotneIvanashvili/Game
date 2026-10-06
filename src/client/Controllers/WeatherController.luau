@@ -488,8 +488,23 @@ local function findOrCreate(className: string, name: string): (Instance, boolean
 end
 
 function WeatherController.Init()
-	local atmos, _ = findOrCreate("Atmosphere", "Atmosphere")
+	local atmos, created = findOrCreate("Atmosphere", "Atmosphere")
 	atmosphere = atmos :: Atmosphere
+	if created then
+		-- The server's Atmosphere may replicate a moment later; two Atmospheres stack their
+		-- density. When it arrives, drop ours and drive the server's instead.
+		local ours = atmosphere
+		local conn: RBXScriptConnection? = nil
+		conn = Lighting.ChildAdded:Connect(function(child)
+			if child:IsA("Atmosphere") and child ~= ours then
+				atmosphere = child
+				ours:Destroy()
+				if conn then
+					conn:Disconnect()
+				end
+			end
+		end)
+	end
 
 	-- StyleGrade is always ours (by name), never a ColorCorrection someone else owns.
 	local existingGrade = Lighting:FindFirstChild("StyleGrade")

@@ -44,6 +44,7 @@ local function onCharacter(player: Player, character: Model)
 	humanoid.UseJumpPower = false
 	humanoid.JumpHeight = GameConfig.JUMP_HEIGHT
 	humanoid.WalkSpeed = GameConfig.WALK_SPEED
+	humanoid.MaxSlopeAngle = GameConfig.MAX_SLOPE_ANGLE
 	-- Roblox inserts a default "Health" Script that regenerates 1% MaxHealth/s regardless of
 	-- game state. Health is owned by SurvivalService (fed/watered regen, cold damage, downed
 	-- at 1 HP), so remove the engine regen or it silently undoes all of that.
