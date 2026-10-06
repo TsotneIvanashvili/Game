@@ -58,7 +58,7 @@ local ServerToClient = {
 	"Notify", -- (text, severity, key?)
 	"OpenPanel", -- (panelName, data)
 	"ClimbForceStop", -- (reason)
-	"PingBroadcast", -- (position, fromName)
+	"PingBroadcast", -- (position, fromName, fromUserId)
 	"CameraShake", -- (intensity, duration)
 	"ExpeditionSummary", -- (stats)
 	"PlaySound", -- (soundKey, position?)

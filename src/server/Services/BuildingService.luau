@@ -15,6 +15,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local GameConfig = require(Shared.Config.GameConfig)
 local RecipeDefs = require(Shared.Config.RecipeDefs)
 local ZoneDefs = require(Shared.Config.ZoneDefs)
+local ProgressionConfig = require(Shared.Config.ProgressionConfig)
 local WarmthModel = require(Shared.Logic.WarmthModel)
 local Registry = require(script.Parent.Parent.Registry)
 local PlayerStore = require(script.Parent.Parent.PlayerStore)
@@ -101,6 +102,8 @@ function BuildingService.environmentAt(pos: Vector3): {
 			wind = math.min(wind, s.windFactor or 1)
 			blocked = blocked or s.precipBlocked == true
 			inShelter = true
+			-- Simplification: a wind wall shelters everyone within its radius regardless of wind
+			-- direction. A true lee check against WorldState.WindDirection is a planned refinement.
 		elseif s.kind == "wind_wall" and (s.position - pos).Magnitude <= WIND_WALL_RADIUS then
 			wind = math.min(wind, s.windFactor or 1)
 		end
@@ -409,7 +412,8 @@ local function spawnStructure(player: Player, recipe: RecipeDefs.Recipe, frame: 
 				remote().notify(p, "You need rope.", "warn")
 			end
 		end)
-		Registry.get("ProgressionService").achieve(player, "first_shelter", 25, "First emergency shelter")
+		Registry.get("ProgressionService")
+			.achieve(player, "first_shelter", ProgressionConfig.XP.FirstShelter, "First emergency shelter")
 	elseif recipe.id == "wind_wall" then
 		model = AssetFactory.windWall(frame)
 		s = register({

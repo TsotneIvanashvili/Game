@@ -454,8 +454,6 @@ ranges, NaN/inf, extra args rejected) -> `pcall`ed handler. A rejected RemoteFun
 | ExpeditionSummary | summary table (see ExpeditionService.summaryFor) | ExpeditionService.sectionComplete | SummaryController |
 | PlaySound | soundKey, position? | DisasterService (`"Rumble"`) | AudioController (key must exist in AudioConfig) |
 
-Note: the comment in `Remotes.luau` documents `PingBroadcast` as `(position, fromName)`; the
-server sends `fromUserId` as a third argument and PingController reads it.
 
 ### Why most world interactions are ProximityPrompts, not remotes
 
@@ -958,7 +956,7 @@ instances present at `Start`, and (except `SectionEnd`) also ones added later.
 | `WaterSource` | BasePart or Model | `Treated` (bool, default false = stream water) | - | ResourceService |
 | `WaterVolume` | BasePart (oriented box, can be invisible / non-collide) | - | - | SurvivalService (feet in water: wetness, cold feet) |
 | `RockfallZone` | BasePart (invisible box covering where players stand) | `PushDirection` (Vector3, default (-1, 0, 0)) | at least one Attachment named `Release` (otherwise the zone never fires) | DisasterService |
-| `SectionEnd` | BasePart | `Radius` (default 20) | - | CampService (must exist at server start) |
+| `SectionEnd` | BasePart | `Radius` (default 20) | - | CampService (also picks up parts added later) |
 | `Climbable` | BasePart | `Ice` (bool, optional: needs a held ice axe) | - | ClimbingService, ClimbingController |
 | `IgnoreGroundRaycast` (optional) | any | - | - | excluded from survival ground/climb raycasts (filter refreshed on character add/remove) |
 

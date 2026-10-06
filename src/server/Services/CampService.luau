@@ -237,11 +237,15 @@ function CampService.Start()
 		setupOutfitter(o)
 	end
 	CollectionService:GetInstanceAddedSignal("Outfitter"):Connect(setupOutfitter)
-	for _, p in CollectionService:GetTagged("SectionEnd") do
-		if p:IsA("BasePart") then
+	local function addSectionEnd(p: Instance)
+		if p:IsA("BasePart") and not table.find(sectionEnds, p) then
 			table.insert(sectionEnds, p)
 		end
 	end
+	for _, p in CollectionService:GetTagged("SectionEnd") do
+		addSectionEnd(p)
+	end
+	CollectionService:GetInstanceAddedSignal("SectionEnd"):Connect(addSectionEnd)
 
 	-- Section end detection: cheap distance check once a second.
 	task.spawn(function()

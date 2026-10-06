@@ -122,17 +122,16 @@ Small mismatches between code, comments and the design, for the owning workstrea
 
 - Wind wall `description` says it shelters "anyone standing in its lee", but the code applies
   wind x0.4 to everyone within 8 studs regardless of wind direction.
-- `WeatherDefs` says one storm is "a thunderstorm in the forest and a blizzard on the ridge", but a
-  fully blended Storm is -1 C at Base Camp (9 C base - 10 C offset), below the 1 C rain/snow
-  split, so it is a blizzard everywhere and lightning never shows at full storm strength.
 - Lightning has no gameplay effect (client flashes only).
-- `XP.FirstShelter` (25) in ProgressionConfig is not read; BuildingService hard-codes 25.
-  `XP.Summit` is unused (no summit in the slice).
 - DataService tracks `dirty` but autosave saves every session regardless.
 - `GameConfig.MAX_PLAYERS_HINT` says the UI uses it; nothing does. Max players must be set in
   Game Settings.
-- `SectionEnd` parts are only collected at server start (no `GetInstanceAddedSignal`), unlike the
-  other tags.
 - Snow load on tarp roofs is visual only; it doesn't affect durability.
 - Rejoin restore only works on the same server within 600 s; supply allowances reset otherwise.
-- The comment for `PingBroadcast` in `Remotes.luau` lists two arguments; three are sent.
+
+
+### Fixed after this review
+- Storm offset is now −7 °C: rain (thunderstorm) at Base Camp, blizzard at Ridge Camp.
+- `XP.FirstShelter` is read from ProgressionConfig.
+- `SectionEnd` parts added after start are picked up.
+- `PingBroadcast` comment lists all three arguments.
