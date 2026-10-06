@@ -1,0 +1,7 @@
+# Linting: `selene src tests`. Uses a minimal hand-written Roblox std (roblox_lite.yml) so it
+# works offline; with network access you can switch to std = "roblox" for full API typing.
+std = "roblox_lite"
+
+[lints]
+shadowing = "allow"
+multiple_statements = "allow"

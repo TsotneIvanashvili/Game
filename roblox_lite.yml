@@ -1,0 +1,104 @@
+base: luau
+name: roblox_lite
+globals:
+  warn:
+    args:
+      - type: "..."
+  Vector3int16:
+    any: true
+  game:
+    any: true
+  workspace:
+    any: true
+  script:
+    any: true
+  plugin:
+    any: true
+  shared:
+    any: true
+  Instance:
+    any: true
+  Vector3:
+    any: true
+  Vector2:
+    any: true
+  CFrame:
+    any: true
+  Color3:
+    any: true
+  ColorSequence:
+    any: true
+  ColorSequenceKeypoint:
+    any: true
+  NumberSequence:
+    any: true
+  NumberSequenceKeypoint:
+    any: true
+  NumberRange:
+    any: true
+  UDim:
+    any: true
+  UDim2:
+    any: true
+  Enum:
+    any: true
+  task:
+    any: true
+  RaycastParams:
+    any: true
+  OverlapParams:
+    any: true
+  Random:
+    any: true
+  PhysicalProperties:
+    any: true
+  TweenInfo:
+    any: true
+  Region3:
+    any: true
+  Rect:
+    any: true
+  BrickColor:
+    any: true
+  Ray:
+    any: true
+  DateTime:
+    any: true
+  Font:
+    any: true
+  utf8:
+    any: true
+  buffer:
+    any: true
+  tick:
+    any: true
+  time:
+    any: true
+  elapsedTime:
+    any: true
+  delay:
+    any: true
+  spawn:
+    any: true
+  wait:
+    any: true
+  settings:
+    any: true
+  UserSettings:
+    any: true
+  version:
+    any: true
+  Axes:
+    any: true
+  Faces:
+    any: true
+  PathWaypoint:
+    any: true
+  Content:
+    any: true
+  SharedTable:
+    any: true
+  __loadfile:
+    any: true
+  ROOT:
+    any: true
