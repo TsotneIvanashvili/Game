@@ -611,7 +611,7 @@ Width is deliberately wider than the converted value because the R15 torso is 2 
 - An insulated hood with a stiffened brim and a rear volume adjuster; when down, it bunches behind the neck.
 - Elastic-bound cuffs with hook-and-loop tabs, a drawcord hem with cord locks, and reinforced 40D shoulder panels (pack-strap abrasion).
 
-**GAME PURPOSE** — The highest torso insulation (Torso 6, Head 1). Insulation ≥ 0 at the head triggers the `Hood` part.
+**GAME PURPOSE** — The highest torso insulation (Torso 6, Head 1). Head insulation > 0 triggers the `Hood` part (`EquipmentService.build`).
 
 **PLAYER SCALE** — Shell scale 1.10 over each covered body part, so the parka reads visibly bulky: 10% larger than the body all round.
 
@@ -682,7 +682,7 @@ Width is deliberately wider than the converted value because the R15 torso is 2 
 
   Wet: beading. Since droplets cannot be simulated, the wet roughness variant sets the face to 0.25 and adds a bead-dot normal pattern. LOD0 3,000.
 - **Base layers** (`merino_base`, 70, 70, 90; `cotton_tee`, 200, 200, 200; scale 1.03). Shown only without a jacket.
-  - Merino: fine jersey knit (normal at ≈ 0.01-stud pitch), flatlock seams, a thumb-loop cuff on the long sleeves (Merino covers UpperArm only in code).
+  - Merino: fine jersey knit (normal at ≈ 0.01-stud pitch), flatlock seams, and a sleeve end with cover-stitched hem at the elbow: the code's `BaseLayer` slot covers only the UpperTorso, LowerTorso and UpperArms, so no forearm sleeve exists to carry a cuff.
   - Cotton tee: plain jersey, a ribbed collar, a hemmed sleeve end on the upper arm. Cotton shows **wet darkening worst**: its wet variant adds sweat patches at the underarms and chest (an extra 10% darker region), because cotton holds water.
   - LOD0 1,500.
 - **Gloves** (`liner_gloves`, 50, 50, 50, scale 1.12; `insulated_gloves`, 30, 30, 35).
@@ -698,4 +698,574 @@ Width is deliberately wider than the converted value because the R15 torso is 2 
   Both: knee dirt and wear at the front of the LowerLeg/UpperLeg junction; the hem overlaps the boot cuff (see 2.6). LOD0 2,500.
 
 ---
+
+### 2.8 Alpine expedition tent
+
+**ASSET NAME** — `ExpeditionTent` (not built in code yet; proposed as a buildable structure in the `BuildingService` pattern).
+
+**REAL-WORLD REFERENCE** — A 2-person, 4-season, double-wall geodesic dome.
+- **Poles:** 4 aluminium poles (Ø 9.5 mm, shock-corded segments of about 45 cm, joined by ferrules) crossing at 5 points, sleeved through fly sleeves or held by clips on the inner tent.
+- **Fly:** silicone-coated 40D ripstop nylon fly with one front vestibule (0.8 m deep) and one rear vent with a prop strut. Snow valances (25 cm skirts) sewn around the fly base.
+- **Inner and floor:** 70D PU-coated nylon bathtub floor; inner walls in breathable nylon with a mesh panel at the door top.
+- **Anchoring:** 8 guy-out points, each a reflective 3 mm cord through a line tensioner; aluminium V-stakes or buried snow-anchor plates.
+- **Doors:** a two-way #8 door zip following the D-shaped door, with a storm flap.
+
+**GAME PURPOSE** — A high-tier shelter: precipitation blocked, wind factor below the tarp's (tarp is 0.25 in code), and room for 2 players to rest.
+
+**PLAYER SCALE** — Two R15 characters lie side by side inside the inner. A crouching character fits under the peak; a standing one does not. The vestibule holds a pack.
+
+**APPROXIMATE DIMENSIONS** — Real inner 2.15 m L × 1.35 m W × 1.05 m H; footprint with vestibule 3.0 m × 1.9 m. @0.28: 7.7 × 4.8 × 3.75 studs. @0.35: 6.1 × 3.9 × 3.0 studs. **Target: inner 7.0 × 5.0 × 3.6 studs. Total footprint 9.6 × 6.0 studs including the vestibule; guy-out radius 2.5 studs beyond the fly.** The width is set by the 2-stud-wide R15 torso.
+
+**SILHOUETTE** — A low, rounded dome: a near-hemispherical cross-section with the fly reaching the ground all round, the vestibule as a sloped wedge on one end, and taut panels between the poles with slight inward curvature (fabric under tension curves between supports; never flat planes). Guy lines run out at 35–45° from the pole crossings.
+
+**PRIMARY COMPONENTS** — `Fly` (outer), `Inner` (visible through the open door only), `Floor` (PrimaryPart; bathtub edge rises 0.3 studs), `Pole` ×4.
+
+**SECONDARY COMPONENTS** — Vestibule, door storm flap, rear vent with its strut, snow valances, `GuyLine` ×8, `Stake` ×8 (V-stakes driven at 60° away from the tent) or `SnowAnchor` ×8 (a buried plate with the cord disappearing into the snow), pole-tip grommets with webbing tabs at the fly corners.
+
+**MECHANICAL COMPONENTS** — Pole ferrule joints (a slight 0.01-stud bulge every 1.6 studs along each pole), door zip with 2 sliders, line tensioners (small plastic plates on each guy line, 0.3 studs from the fly), and the vent strut.
+
+**MATERIALS** — Fly: silnylon (warm yellow or orange is the realistic choice for visibility; final tint TBD by design). Floor: dark grey PU nylon. Poles: anodised grey aluminium. Guy lines: 3 mm cord, orange. Stakes: aluminium. Valances: matching fly fabric.
+
+**MATERIAL ROUGHNESS** — Silnylon 0.40 (it has a satin sheen); floor 0.55; poles 0.35; cord 0.75; stakes 0.40.
+
+**SURFACE DETAILS** — Tension wrinkles radiating from every guy-out point and pole clip. Catenary sag in unsupported panels (0.1–0.2 studs). Ripstop grid. Sleeve channels over the poles (the pole shape reads through the fabric).
+
+**STITCHING** — Seams sealed on the fly. Seams show as a double row of lockstitch with a faint seam-tape line (fly undersides only). Bar-tacks on every guy-out tab.
+
+**SEAMS** — Fly panel seams follow the pole arcs (pole sleeves are sewn into seams). Vestibule seam. Valance seam along the fly base.
+
+**FASTENERS** — Door zip, buckle-adjustable corner straps (fly to the pole tip), toggles holding the rolled door open, and line tensioners.
+
+**WEAR** — Faded fly top (UV exposure, 8% lighter). Abrasion on the floor corners. Pole anodise worn at the ferrules.
+
+**SCRATCHES** — On stakes and poles only.
+
+**DIRT** — On the floor's bathtub walls and the valance bottom edges. The vestibule ground is trampled (handled by the terrain or a decal mesh).
+
+**MUD** — Below Snowline: the valances and floor edges are spattered.
+
+**SNOW** — `RoofSnow` MeshParts (direct children, same behaviour as the tarp shelter): 2–4 conforming shells on the upper fly panels. Snow is thicker in the hollows between poles, thinner on the pole ridges, and cut off where the slope exceeds 50°. Static banked snow on the valances (blocks dug and piled on them), part of the "pitched on snow" variant.
+
+**WATER RESPONSE** — Wet fly: darkened 25% with roughness 0.25. This needs a code hook like the clothing wetness (none today).
+
+**DAMAGE** — Proposed durability states, mirroring the tarp: 100–50% intact. Below 25%, a torn guy-out tab and one slack panel (a swapped panel mesh with deeper sag and a flapping corner).
+
+**ATTACHMENT POINTS** (proposed, matching `BuildingService` conventions) — Model PrimaryPart `Floor` (prompts attach here). Shelter interior box centred 1.8 studs above the floor, size 6.6 × 3.4 × 5.0 (local). `RoofSnow` parts are direct children. Attachments `GuyOut1..8` on the fly, each with a matching `GuyLine` ending at a `Stake`. `DoorPrompt` attachment at the door centre.
+
+**ANIMATION** — Static mesh by default. Optional skinned fly (4–8 bones on the large panels) with a client-side script adding small flutter (≤ 0.05 studs) scaled by wind speed. Roblox has no vertex wind for MeshParts, so motion must come from bones.
+
+**PLAYER INTERACTION** — "Rest inside" and "Repair" prompts, as with the tarp. Entering is via the door side only (collision, below).
+
+**GAMEPLAY FUNCTION** — Weather protection and resting.
+
+**COLLISION** — Fly: `PreciseConvexDecomposition` is wrong for a hollow dome (convex parts fill the interior). Use a separate invisible collision shell of 6–10 thin Parts for the walls with a door gap; the visual MeshParts get `CanCollide = false`. The floor collides (Box). Guy lines and stakes do not collide.
+
+**LOD** — LOD0 6,000 / LOD1 2,500 / LOD2 600 tris.
+
+**TEXTURE STRATEGY** — One 1024² fly map; a 512² floor and inner map; poles, stakes and tensioners on `ATLAS_Metal` and `TRIM_Webbing_Hardware`; guy lines as Beams with the shared rope texture (orange tint).
+
+**ROBLOX OPTIMIZATION** — Fly and vestibule in one MeshPart; RoofSnow shells separate; poles merged into the fly mesh where they are inside the sleeves. Enable `DoubleSided` only on the fly if the inside is visible through the door.
+
+**FINAL VISUAL TARGET** — A tent pitched by someone who knows how: taut panels, evenly tensioned guys, valances buried, snow collecting in the panel hollows.
+
+**NEGATIVE REQUIREMENTS** — No toy-like proportions: no oversized poles. No floating components: every guy line ends at a stake or anchor, and the fly meets the ground. No impossible straps. No random decorative parts: no flags or windows that real tents lack. No excessive geometry. No perfectly clean surfaces. No generic low-poly look: no flat pyramid faces. No disconnected components. No logos or text. No unrealistic materials: no plastic-shiny fly, no transparent panels.
+
+---
+
+### 2.9 Campfire
+
+**ASSET NAME** — `Campfire`. Code parts: `Base` (PrimaryPart), `RingStone` ×9, `Log` ×3, `Char` ×3, `Embers` (hosts the `Fire`, `Smoke` and `PointLight`).
+
+**REAL-WORLD REFERENCE** — A backcountry fire ring:
+- 9 fist-to-head-sized granite stones in a 1 m ring on a cleared mineral-soil pad;
+- a teepee lay of 3 split fuel logs (8–12 cm thick, 70–80 cm long) leaning to an apex over a kindling crib (6–10 sticks, 1–3 cm thick);
+- a grey-white ash bed with glowing coals at the centre.
+
+**GAME PURPOSE** — A warmth source (`NearFire` attribute; it melts the pack SnowCap faster), with fuel that runs out (`BuildingService` fuel and extinguish). A cooking and gathering point.
+
+**PLAYER SCALE** — The ring's outer diameter is 70% of character height. The teepee apex is at knee-to-hip height.
+
+**APPROXIMATE DIMENSIONS** — Real ring 1.0 m Ø, teepee 0.6–0.7 m tall. @0.28: 3.6 Ø, 2.3 tall. @0.35: 2.9 Ø, 1.9 tall. **Target (greybox): pad 3.6 Ø; ring stones centred at r = 1.75; apex 2.1 studs; logs Ø 0.32; ember bed 1.6 Ø.**
+
+**SILHOUETTE** — A low ring of irregular stones, each a different size (0.7–1.0 × 0.45–0.65 × 0.55), tilted ±10°. A teepee of 3 logs whose feet rest at r = 1.15, inside the ring. The logs touch each other at the apex and **cross**: they rest against each other and do not intersect through each other's centres.
+
+**PRIMARY COMPONENTS** — Ring stones, fuel logs, ash and ember bed (`Embers`), soil pad (`Base`).
+
+**SECONDARY COMPONENTS** — Kindling crib inside the teepee (6–10 thin sticks, lying on the ember bed); 2–3 unburnt log ends outside the ring as a fuel pile (optional); soot staining on the inner faces of the ring stones.
+
+**MECHANICAL COMPONENTS** — None.
+
+**MATERIALS** — Granite stones; pine logs with bark (bark is lost on the charred upper third); charcoal; ash; soil.
+
+**MATERIAL ROUGHNESS** — Stone 0.80 (soot-blackened inner faces 0.90); bark 0.90; char 0.85 (alligator-cracked, with a slight sheen on the crack ridges at 0.70); ash 0.95; soil 0.95.
+
+**SURFACE DETAILS**
+- **Char:** alligator cracking (rectangular checks 0.04–0.08 studs), progressing from fully cracked black at the apex end to a browned, scorched transition 0.4 of the log length down.
+- **Logs:** split faces with growth rings on the log ends.
+- **Ash:** fine powder that collects in the gaps between stones.
+
+**STITCHING** — Not applicable.
+
+**SEAMS** — Not applicable.
+
+**FASTENERS** — Not applicable.
+
+**WEAR** — Stones fire-cracked: 1–2 have a spall missing (a fresh, lighter fracture face).
+
+**SCRATCHES** — Not applicable.
+
+**DIRT** — Soot gradient on the ring stones (black at the inner base, fading to clean grey on the outer top); scattered ash and charcoal fragments on the pad.
+
+**MUD** — Below Snowline, the pad edge blends into mud (terrain).
+
+**SNOW** — Static: snow on the outer tops of the ring stones only, with a melted ring (a 0.5-stud bare zone) around the outside. No snow on the logs or inside the ring while burning.
+
+**WATER RESPONSE** — Not driven. A rain variant: stones darker (wet granite 0.35 roughness), ash becomes a grey paste (albedo darker, roughness 0.6).
+
+**DAMAGE** — Fuel states, each a swappable `Log` and `Embers` set: **Burning** (full teepee, bright coals); **Low** (logs burnt to 60% length, collapsed inward: the apex is lost and the logs lie on the ember bed); **Out** (charred stubs, grey ash, no Neon, no light).
+
+**ATTACHMENT POINTS** (code contract) — `Base` is the PrimaryPart at `at × (0, 0.1, 0)`. `Embers` is at `at × (0, 0.26, 0)` and must remain a BasePart (the Fire, Smoke and PointLight are parented to it).
+
+**ANIMATION** — Fire and smoke are engine effects. The ember glow can pulse via script (PointLight Brightness 2.2–2.8, and Neon Color). No mesh animation.
+
+**PLAYER INTERACTION** — `BuildingService.attachFirePrompts` (add fuel, cook, etc.). The prompt hosts on the model; keep the existing part names.
+
+**GAMEPLAY FUNCTION** — Warmth radius 2.5 (`radius`), fuel, light at night (PointLight range 22).
+
+**COLLISION** — Currently nothing collides. Recommended: ring stones `CanCollide = true` with `CollisionFidelity = Hull` (they are small and convex), so players step over them; logs, embers and pad off. `CanQuery = false` on the embers.
+
+**LOD** — LOD0 3,000 / LOD1 1,200 / LOD2 300 tris (whole prop). The stones become a single ring mesh at LOD2.
+
+**TEXTURE STRATEGY** — Stones and logs from `ATLAS_Wood_Bark` plus a 512² rock-detail map. Embers: SurfaceAppearance is not used on `Embers`, because it must be `Neon` to glow. Roblox SurfaceAppearance has no emissive channel to our knowledge (verify). Model the ember mesh as broken lumps of coal (not a disc), with the Neon applied only to the coal lumps in a separate MeshPart.
+
+**ROBLOX OPTIMIZATION** — Stones merged into one MeshPart; logs into one; char into the logs (texture gradient, no separate `Char` part). Keep a part named `Embers`. `Smoke.Opacity` is already low (0.08). `PointLight.Shadows = true` is expensive: allow only one shadow-casting fire light within 60 studs of the camera (follow-up 6.7).
+
+**FINAL VISUAL TARGET** — A fire someone built with care: the stones are blackened inside, the logs are charred from the top down with bark still on their lower ends, the coal bed has orange lumps under grey ash and the kindling is visible through the teepee gaps.
+
+**NEGATIVE REQUIREMENTS** — No toy-like proportions: no cartoon log stack, no identical stones. No floating components: the logs rest on the ground and on each other. No impossible straps. No random decorative parts: no cooking pot unless gameplay has one. No excessive geometry. No perfectly clean surfaces. No generic low-poly look: the stones are not cubes. No disconnected components. No logos or text. No unrealistic materials: no flat Neon disc, no blue flames.
+
+---
+
+### 2.10 Emergency tarp shelter
+
+**ASSET NAME** — `TarpShelter` (built) and `TarpRoll` (stowed, see 2.1).
+
+**REAL-WORLD REFERENCE** — A 3 × 3.5 m silnylon or PU-coated polyester tarp pitched in an A-frame:
+- **Ridgeline:** a 4 mm static cord ridgeline tied between two cut wooden poles (Ø 5–6 cm, about 1.5 m) and continuing past each pole top to a guy stake.
+- **Tie-outs:** the tarp's edge has sewn webbing loops at the corners and mid-edges, each reinforced with a bar-tacked triangular patch and holding a guy loop to a stake.
+- **Ridge:** the ridge seam drapes over the ridgeline.
+
+**GAME PURPOSE** — An early shelter: wind factor 0.25, precipitation blocked, durability that decays with high wind, repairable with rope (`Reinforce (1 rope)`), collapses at 0.
+
+**PLAYER SCALE** — The ridge is just above character height (5.2 studs); one character stands under the ridge, and two lie side by side.
+
+**APPROXIMATE DIMENSIONS** — Real ridge length 3.0 m, slope 1.75 m per side, ridge 1.5 m high. @0.28: 10.7 × 6.25 per side × 5.4 high. @0.35: 8.6 × 5.0 × 4.3. **Target (greybox): length 9, half-width 3.6, ridge 5.2; poles to 5.5; guy stakes 2.5 beyond each end.**
+
+**SILHOUETTE** — An A-frame with two sloping planes that **sag**: each panel dips 0.25 studs at mid-length (catenary along the ridge) and bellies 0.1–0.15 studs inward across the slope. The ridge is a slightly drooping line, and guy lines run from the pole tops to the end stakes.
+
+**PRIMARY COMPONENTS** — `TarpPanel` (the tarp as one continuous sheet; the greybox's 4 panels become one mesh with a ridge fold), `Pole` ×2, `RidgeLine`.
+
+**SECONDARY COMPONENTS** — `Stake` ×6 (corners plus mid-edges), `GuyStake` ×2, `GuyLine` ×2, tie-out loops ×6 (webbing), ridge tie-outs ×2 at the tarp ends.
+
+**MECHANICAL COMPONENTS** — Knots: a trucker's hitch at one end of the ridgeline and a bowline at the other (modelled as small bulges with a wrapped texture); prusik loops on the ridgeline holding the tarp's ridge tie-outs.
+
+**MATERIALS** — Tarp: PU-coated polyester (ItemDefs 60, 110, 70). Poles: debarked spruce or fir saplings (bark stripped at the top where the line wraps). Cord: nylon (orange, 220, 110, 40). Stakes: aluminium Y-stakes.
+
+**MATERIAL ROUGHNESS** — Tarp 0.55; poles 0.85 (bark) and 0.70 (stripped); cord 0.75; stakes 0.40.
+
+**SURFACE DETAILS** — Tension wrinkles fan from every tie-out. The ridge fold is crisp. Slack panels show diagonal wrinkles toward the corners. A dew or condensation sheen on the underside (roughness 0.4).
+
+**STITCHING** — Hemmed edges (double-fold hem, a single stitch row 0.06 studs from the edge), bar-tacked tie-out loops, a box-X on the corner patches.
+
+**SEAMS** — One centre seam across the tarp's width at the ridge (a typical construction from two widths of fabric), seam-sealed.
+
+**FASTENERS** — Knots, prusiks and the stake loops. **Every tie-out loop must reach a stake.** The stake's head shows the loop wrapped under its hook.
+
+**WEAR** — Faded top surface; abraded edges where they contact the ground.
+
+**SCRATCHES** — Not applicable (fabric). Stakes are scratched at the head (hammered with a rock).
+
+**DIRT** — Soil splash along the bottom 0.3 studs of each panel. Pole bottoms are dark and wet-looking where they meet the ground.
+
+**MUD** — Below Snowline: mud on the edges and pole feet.
+
+**SNOW** — `RoofSnow` ×2 (direct children, code contract): conforming shells following each sagged panel, thicker toward the bottom edge (snow slides and collects), thinner at the ridge, with a slight overhang lip of ≤ 0.1 studs at the bottom edge. They fade from Transparency 1 to 0.1 (code).
+
+**WATER RESPONSE** — Wet variant (rain zones): darker by 20%, roughness 0.30; droplet normal on the top surface.
+
+**DAMAGE** — Durability visuals (proposed, code hook needed):
+- ≤ 25%: one corner tie-out torn free. The tarp corner lifts and flaps (a swapped corner mesh), and the stake stands alone with its loop torn.
+- 0: collapse. The model is removed by code.
+
+**ATTACHMENT POINTS** (code contract) — `Floor` is the PrimaryPart (prompts "Rest under the tarp" and "Reinforce" anchor to it), at `at × (0, 0.08, 0)`. `RoofSnow` parts are direct children. Interior box: `at × (0, 2.6, 0)`, size 6.6 × 5.2 × 9.
+
+**ANIMATION** — Optional: skinned tarp (6–8 bones) with a client flutter driven by wind speed; amplitude rises as durability falls.
+
+**PLAYER INTERACTION** — Rest (E), Reinforce (F, hold 1.5 s, consumes 1 rope).
+
+**GAMEPLAY FUNCTION** — Shelter with decay; it teaches the player about wind.
+
+**COLLISION** — The tarp collides (the code sets `TarpPanel` to collide). A single Box or Hull around an A-frame mesh would fill the space under the roof, so either split the visual into two MeshParts (one per side) with `CollisionFidelity = Hull`, or keep the visual mesh non-colliding and add two invisible thin Parts, one along each slope, as the collider (recommended: cheapest and exact). Poles collide (Box); cord and stakes do not.
+
+**LOD** — LOD0 2,500 / LOD1 1,000 / LOD2 250 tris.
+
+**TEXTURE STRATEGY** — A 1024² tarp map (top and underside share UVs; `DoubleSided` on the tarp MeshPart). Poles from `ATLAS_Wood_Bark`; cord from the shared rope texture (or Beams); stakes on `ATLAS_Metal`.
+
+**ROBLOX OPTIMIZATION** — Tarp as one MeshPart (DoubleSided); the 2 poles plus ridge cord as one; stakes merged per side. RoofSnow stays separate.
+
+**FINAL VISUAL TARGET** — A taut but naturally sagging tarp, every edge loop tied down, a ridgeline knot visible at the pole, and snow piling toward the eaves.
+
+**NEGATIVE REQUIREMENTS** — No toy-like proportions: no thick board-like tarp (it is ≤ 0.03 studs thick visually). No floating components: no tarp corner hovering above a stake. No impossible straps: the guy lines run to stakes in straight lines (cord under tension does not sag visibly over 3 studs). No random decorative parts. No excessive geometry. No perfectly clean surfaces. No generic low-poly look: no flat planes. No disconnected components. No logos or text. No unrealistic materials: no Neon or plastic.
+
+---
+
+### 2.11 Wind wall
+
+**ASSET NAME** — `WindWall`. Code parts: `Base` (PrimaryPart), `Post` ×2 (→ 4, follow-up 6.5), `Log` ×7.
+
+**REAL-WORLD REFERENCE** — A log windbreak. Two pairs of stakes are driven 40 cm into the ground about 3.5 m apart. Peeled or barked logs (15–22 cm) are stacked horizontally between each pair, each log resting on the one below. The stake pairs are lashed together across the top with cord so the stack cannot spread. The windward base is banked with snow or soil.
+
+**GAME PURPOSE** — Wind factor 0.4 within a 5.5-stud radius. A cheap camp improvement.
+
+**PLAYER SCALE** — Height equals character height (5 studs). Width is 2.2× character height.
+
+**APPROXIMATE DIMENSIONS** — Real 3.5 m × 1.6 m × 0.25 m. @0.28: 12.5 × 5.7 × 0.9. @0.35: 10 × 4.6 × 0.7. **Target: 11 × 5 × 0.62 studs, posts Ø 0.3 driven 0.5 into the ground and rising to 5.4.**
+
+**SILHOUETTE** — A horizontal stack of slightly uneven logs (each Ø 0.55–0.70, with ends cut at slightly different lengths and angles) between two pairs of posts. A cord lashing between each post pair just above the top log.
+
+**PRIMARY COMPONENTS** — `Log` ×7–8 (stacked in contact; each log rests on the one below along at least 60% of its length), `Post` ×4 (a pair at each end, one on each face of the stack, at z = ±0.4).
+
+**SECONDARY COMPONENTS** — Top lashings ×2 (cord wraps over the top log binding each post pair), a snow or soil berm on the windward face (part of `Base`).
+
+**MECHANICAL COMPONENTS** — None.
+
+**MATERIALS** — Barked pine logs, sharpened post bottoms, nylon or natural cord.
+
+**MATERIAL ROUGHNESS** — Bark 0.90; cut ends 0.75; cord 0.75.
+
+**SURFACE DETAILS** — Saw or axe cuts on the log ends (axe-cut ends are faceted, with V-shaped chops). Bark plates. Knots and branch stubs flush-cut.
+
+**STITCHING** — Not applicable.
+
+**SEAMS** — Not applicable.
+
+**FASTENERS** — Cord lashings (a square lashing pattern) at the post tops.
+
+**WEAR** — Bark scraped off where the logs contact the posts.
+
+**SCRATCHES** — Not applicable.
+
+**DIRT** — Soil on the bottom log and the post bases.
+
+**MUD** — Below Snowline: mud at the base.
+
+**SNOW** — Static: snow on the top surface of each log (thin, 0.03–0.06), thickest on the top log; a windward drift banked to 1/3 of the height; a leeward scoop (a bare hollow) right behind the wall.
+
+**WATER RESPONSE** — Rain variant: bark darker by 25%, cut ends darker.
+
+**DAMAGE** — None.
+
+**ATTACHMENT POINTS** — `Base` is the PrimaryPart at `at × (0, 0.1, 0)`.
+
+**ANIMATION** — None.
+
+**PLAYER INTERACTION** — None beyond placement.
+
+**GAMEPLAY FUNCTION** — Wind reduction.
+
+**COLLISION** — The logs collide as one combined collider: a single invisible Box (11 × 5 × 0.7) is cheaper than 7 cylinders. Posts: Box.
+
+**LOD** — LOD0 3,000 / LOD1 1,200 / LOD2 250 tris.
+
+**TEXTURE STRATEGY** — `ATLAS_Wood_Bark` only (plus a shared snow overlay).
+
+**ROBLOX OPTIMIZATION** — One MeshPart for all logs and posts; one collision Part; snow as a separate MeshPart only if it needs to be toggled.
+
+**FINAL VISUAL TARGET** — A wall that could stand on its own: logs nest on each other, the post pairs pinch the stack, the lashings hold the posts, and snow drifts on the windward side.
+
+**NEGATIVE REQUIREMENTS** — No toy-like proportions. **No floating components: no log hovering with a gap above the log below** (the greybox spaces the logs 0.714 apart at Ø 0.62, leaving 0.09-stud gaps, and its logs stop 0.2 short of the posts; see follow-up 6.5). No impossible straps. No random decorative parts. No excessive geometry. No perfectly clean surfaces. No generic low-poly look: no identical cylinders. No disconnected components. No logos or text. No unrealistic materials.
+
+---
+
+### 2.12 Trail marker
+
+**ASSET NAME** — `TrailMarker`. Code parts: `Stake` (PrimaryPart), `Flag` (hosts the `PointLight`). A `BillboardGui` is added by `BuildingService`.
+
+**REAL-WORLD REFERENCE** — A glacier and snow route wand: a 1.8 m wooden or bamboo stake, 2.5 cm thick, pointed at the bottom, with a 25 × 35 cm fluorescent nylon flag tied to the top by 2 cord ties through its hemmed hoist sleeve.
+
+**GAME PURPOSE** — Route marking that is visible through fog (the BillboardGui is AlwaysOnTop with a 400-stud MaxDistance; the PointLight has a range of 10).
+
+**PLAYER SCALE** — The top of the flag is above head height (5.6 studs).
+
+**APPROXIMATE DIMENSIONS** — Real 1.8 m (0.2 m buried) × Ø 0.025 m; flag 0.25 × 0.35 m. @0.28: 6.4 tall, flag 0.9 × 1.25. @0.35: 5.1, flag 0.7 × 1.0. **Target (greybox): stake from −0.6 to 5.6, Ø 0.22 (a 2.5× exaggeration of thickness for readability); flag 0.8 tall × 1.2 long, its top edge at 5.4.**
+
+**SILHOUETTE** — A thin vertical stake with a rectangular flag hanging from its top on one side, droop-curled (the flag's free corner sags 0.1–0.2 studs below its hoist corner).
+
+**PRIMARY COMPONENTS** — `Stake`, `Flag`.
+
+**SECONDARY COMPONENTS** — 2 cord ties at the top and bottom of the flag's hoist edge, wrapping the stake; the cut point at the bottom (hidden in the ground).
+
+**MECHANICAL COMPONENTS** — None.
+
+**MATERIALS** — Stake: split or peeled pine (or bamboo with nodes every 1 stud). Flag: fluorescent orange nylon (sRGB ≈ 255, 110, 20).
+
+**MATERIAL ROUGHNESS** — Stake 0.80; flag 0.55.
+
+**SURFACE DETAILS** — Hemmed flag edges; a frayed free edge (alpha-cut fringe of 0.03 studs); knife-cut marks on the stake top.
+
+**STITCHING** — Single-row hem around the flag; the hoist sleeve is sewn.
+
+**SEAMS** — Hoist sleeve seam.
+
+**FASTENERS** — 2 cord ties (clove hitches) through grommets at the sleeve's top and bottom.
+
+**WEAR** — UV-faded flag on its upper half (−10% saturation); frayed fly end.
+
+**SCRATCHES** — Not applicable.
+
+**DIRT** — The stake is darker at the snow or soil line.
+
+**MUD** — Below Snowline: mud on the bottom 0.4 studs of the stake.
+
+**SNOW** — Static: rime on the windward side of the stake (a white crust strip, 0.02 thick) in the Summit and High Altitude zones; a small snow cap on the stake top.
+
+**WATER RESPONSE** — The flag darkens 20% when wet (rain variant).
+
+**DAMAGE** — None.
+
+**ATTACHMENT POINTS** (code contract) — `Stake` is the PrimaryPart (a cylinder from `at × (0, −0.6, 0)` to `at × (0, 5.6, 0)`); `Flag` is a BasePart at `at × (0, 5.0, 0.6)` with the PointLight. The BillboardGui sits 6.5 studs above.
+
+**ANIMATION** — Static, pre-posed with a light droop. Optional: rotate the flag about the stake axis to face downwind (a cheap CFrame yaw on the client) so that all flags agree with the weather.
+
+**PLAYER INTERACTION** — Placement only.
+
+**GAMEPLAY FUNCTION** — Wayfinding in whiteouts.
+
+**COLLISION** — The stake collides (Box, small). The flag has no collision and no query.
+
+**LOD** — LOD0 400 / LOD1 150 / LOD2 40 tris.
+
+**TEXTURE STRATEGY** — The stake on `ATLAS_Wood_Bark`; the flag as a 256² unique map with an alpha fringe (`AlphaMode = Transparency`), `DoubleSided`.
+
+**ROBLOX OPTIMIZATION** — 2 MeshParts (the flag needs DoubleSided and alpha). **Replace the flag's `Neon` material** (follow-up 6.6): fabric is not emissive, and the BillboardGui and PointLight already guarantee fog visibility.
+
+**FINAL VISUAL TARGET** — A real route wand: a thin stake and a small, saturated orange flag tied on with two hitches, faded and frayed after days in the wind.
+
+**NEGATIVE REQUIREMENTS** — No toy-like proportions: no giant flag. No floating components: the flag's hoist edge wraps the stake. No impossible straps. No random decorative parts: no lamps, no reflectors that real wands lack. No excessive geometry. No perfectly clean surfaces. No generic low-poly look: no hexagonal stake at LOD0 (≥ 8 sides). No disconnected components. No logos or text. No unrealistic materials: no glowing fabric.
+
+---
+
+## 3. Family specs
+
+### 3.1 Rocks — modular kit
+
+**Reference geology.** The mountain is crystalline (granite and gneiss) with a schist band. Rock breaks along **joint sets**: two near-vertical sets roughly perpendicular to each other and one gently dipping set. Fragments are therefore blocky, with flat fracture faces meeting at 70–110°. Edges are rounded on old surfaces and sharp on fresh breaks. Lichen covers the old faces below the Frozen Ridge (y < 330); above it there is none. All of this must be consistent across the whole map: **in one region, every rock's bedding and joint planes share one dip direction (±10°).**
+
+| Family | Size (studs) | Use | LOD0 / LOD1 / LOD2 tris | Collision | Notes |
+|---|---|---|---|---|---|
+| Small | 0.3–1.5 | Scatter, cairn stones, fire-ring stones | 150–400 / 80 / 20 | none (< 0.8), Box (≥ 0.8) | 12 unique shapes; flat bottoms so they sit on the ground |
+| Flat (slab) | 2–6 × 0.4–1.0 thick | Stepping slabs, talus plates, shelter floors | 400–800 / 250 / 60 | Box | Aligned to the slope normal ±5°; one face is an old weathered bedding surface |
+| Boulder | 3–10 | Landmarks, windbreaks, rockfall debris | 1,500–3,000 / 800 / 200 | Hull | 8 unique; 15–30% buried; glacial-erratic variants are more rounded |
+| Cliff modules | 20–60 faces, 8–20 deep | Climbable walls, ridges | 5,000–8,000 / 2,500 / 600 | PreciseConvexDecomposition (raycasts for climbing hit collision geometry) | Tagged `Climbable`; snap kit: straight, inside corner, outside corner, top cap, base talus; edges overlap 1–2 studs into neighbours or terrain |
+| Broken (fracture sets) | 2–8 | Rockfall zones, talus fields | 600–1,500 / 400 / 100 | Hull | Sets of 3–5 pieces whose fracture faces **match** (they can reassemble); fresh faces lighter and lichen-free |
+| Sharp alpine | 1–8 | Frozen Ridge and above | 800–2,000 / 500 / 120 | Hull | Frost-shattered: angular, sharp edges, no rounding, no lichen, rime on windward edges |
+| Wet | any of the above | Stream banks, melt zones | same meshes | same | Material variant only: albedo −30%, roughness 0.35, darker band at the waterline, moss (green-brown, roughness 0.9) below y = 95 |
+| Snow-covered | any of the above | Above the snowline (code flag) | +200–600 for the cap | none on the cap | A separate snow-cap MeshPart conforming to the up-facing surfaces (see rules), or a baked "snowed" texture variant |
+
+**Construction.** Silhouettes come from planar fracture faces; the normal map carries only grain, micro-fractures and pits. No noise-displaced blobs. Bevel radius: 0.02–0.05 studs on fresh edges, 0.15–0.4 on weathered ones.
+
+**Rotation and scale rules**
+- Yaw: free (0–360°), **except cliff modules and slabs, whose strata must match the region's dip direction (±10°).**
+- Pitch and roll: boulders ±15°; small rocks free; slabs follow the ground normal ±5°; cliffs ±5°.
+- Scale: uniform 0.75–1.35. Non-uniform ≤ ±10% per axis (larger stretches show stretched texels and lichen).
+- Burial: 15–30% of height below ground (the code sinks clusters by 0.2 × size). **No visible gap between any rock and the ground or its neighbour.** Check at four points around the base.
+- Snow caps follow **world up**. A baked-snow variant may only be yaw-rotated; pitched or rolled rocks use a separate cap mesh sampled after placement.
+- No two identical rocks within 30 studs of each other (same mesh, same rotation, same scale ± 5%).
+
+**Textures.** A 1024² shared rock atlas per geology (granite, schist) with 4–6 tileable regions plus unique boulder bakes (normal only). Lichen and moss go in a second UV channel only if the importer and SurfaceAppearance support it (they do not use a second UV set to our knowledge, so bake lichen into the unique maps instead).
+
+### 3.2 Pine trees by altitude band
+
+Altitude bands come from `ZoneDefs.luau`. The code thins trees with altitude (scale 1 → 0.35 above y = 40) and stops them at snowline + 30 (y = 165). Trees are snowy from y ≥ snowline − 10 (y = 125).
+
+| Band (y studs) | Species reference | Form | Height (code: 16–30 × region scale × altitude scale) | Snow load |
+|---|---|---|---|---|
+| Base Forest (< 30) | Norway spruce / silver fir | Narrow conical crown to 1/4 height; the lower 1/4 of the trunk has dead, self-pruned branch stubs; dense stands | 22–30 studs | none |
+| Rocky Forest (30–95) | Spruce with European larch | Sparser crowns; 10% dead snags with no needles and silvered bark; roots gripping rock | 16–26 | none |
+| Alpine Meadow (95–135) | Swiss stone pine / subalpine fir | Broad, irregular crowns; trunks often forked; isolated trees | 9–16 | dusting from y ≥ 125 |
+| Snowline (135–165) | Krummholz spruce / dwarf pine | **Wind-flagged**: branches only on the leeward side, stunted (code 0.35 scale), half-buried, multi-stemmed mats | 5–9 | heavy |
+
+**Construction**
+- **Trunk:** tapers continuously from the root flare (1.8× trunk Ø over 0.8 studs) to the leader. Trunk Ø = 0.05 × height, as in the greybox, which is stocky; acceptable for subalpine trees. For Base Forest trees use 0.035.
+- **Branches:** in **whorls**. A spruce whorl is 4–6 branches at one height, with whorl spacing = 0.035 × height. Branch geometry carries **needle-cluster alpha cards** (`AlphaMode = Transparency`). Cards attach along the branch, never floating in the crown. Spruce branches droop at their tips; pine branches are upswept with tufts at the ends.
+- **Bark:** spruce has thin red-brown scaly plates (roughness 0.9); larch has deep furrows; stone pine is grey and smooth when young. Resin streaks at wounds (roughness 0.4, amber).
+- **Dead branch stubs:** grey (70, 58, 48), on the lower trunk (the greybox's `DeadBranch`).
+- **Snow load:** a **separate snowy mesh variant**, because the branches bend 10–20° further down under load. Snow sits on the upper face of each branch's card mass as its own alpha-card layer (`ATLAS_Snow_Overlay`) that stops at the branch tips. There is no snow on the trunk except on the windward side (rime strip) at the Snowline band.
+
+**Budgets**
+- LOD0: 4,000–6,000 tris (Base Forest), 2,500–3,500 (Snowline).
+- LOD1: 1,500.
+- LOD2: 300 (simplified card clusters).
+- LOD3 / impostor: 2–3 crossed alpha quads (≤ 12 tris) beyond ~500 studs.
+
+Roblox has no authored-LOD swap for a single MeshPart. Either rely on `RenderFidelity = Automatic` (which degrades alpha cards poorly), or swap LOD meshes from a client script by distance (recommended for trees). `Model.LevelOfDetail = StreamingMesh` gives engine-generated far meshes when StreamingEnabled is on; verify its quality on alpha foliage before relying on it.
+
+**Collision.** The trunk only: one invisible Part (cylinder or Box) or the trunk MeshPart with `CollisionFidelity = Hull`. Foliage: `CanCollide = false`, `CanQuery = false`, `CanTouch = false`, so placement and climbing raycasts pass through needles.
+
+**Textures.** One 1024² needle-card atlas shared by all species (6–8 branch-tip card types with alpha) and one 1024² bark atlas. Per-band tint differences come from the albedo regions, not new textures.
+
+### 3.3 Snow states
+
+Terrain is the primary surface. Roblox terrain uses one look per base material. A `MaterialVariant` applied to terrain replaces that base material's look **everywhere** in the place, through `MaterialService` base-material overrides. Distinct snow states therefore need distinct base materials. The plan below repurposes base materials the world does not otherwise use.
+
+**Do not repurpose any material listed in `ClimbConfig`** (Rock, Slate, Basalt, Limestone, Sandstone, Granite → climbable rock; Ice, Glacier → climbable ice). Do not repurpose Grass, Ground, Mud or Water (WorldBuilder uses them).
+
+| State | Where | Base material | MaterialVariant | Albedo | Roughness | Normal / pattern | StudsPerTile |
+|---|---|---|---|---|---|---|---|
+| Fresh | Default above the snowline | Snow | `Snow_Fresh` | 236–245, cool blue in shade | 0.85 | Soft pillowed micro-relief; `Pattern = Organic` | 10–14 |
+| Packed | Trails, camp clearings, around structures | Salt | `Snow_Packed` | 215–225, slightly grey | 0.65 | Bootprint compression, flattened; Organic | 8 |
+| Wet / slush | Lower snowline, stream banks, melt zones | Pavement | `Snow_Wet` | 185–205, blue-grey, with darker water-saturated patches | 0.30 | Pitted, granular (corn snow), puddle flats | 8 |
+| Dirty | Avalanche debris, rockfall zones, camp periphery | Asphalt | `Snow_Dirty` | 170–200 with grey-brown speckle, embedded grit, needles and rock chips | 0.70 | Lumpy debris blocks | 12 |
+| Icy (crust / refrozen) | Exposed ridges, wind-scoured slopes | Ice (already climbable with an axe: acceptable on steep faces, irrelevant on flat ground) | `Ice_Crust` | 200–220, faint blue | 0.20–0.35 | Glazed sheet with cracks; Regular | 16 |
+| Windblown (sastrugi) | Summit, High Altitude plateaus | Concrete | `Snow_Windblown` | 230–240 | 0.75 | Directional ridges aligned with the prevailing wind; `Pattern = Regular` so the ridges stay parallel | 16 |
+
+- **Transitions.** Terrain blends neighbouring materials at voxel resolution (4 studs) automatically. Painted state boundaries should follow logic: packed along routes, dirty in fall lines below cliffs, icy on convex wind-exposed crests, windblown on flat high ground.
+- **Footprints, drag marks, ski tracks, soot.** Thin MeshParts that conform to the terrain, with a SurfaceAppearance (`AlphaMode = Transparency`), `CanCollide`, `CanQuery` and `CanTouch` false, `CastShadow = false`. Cap them at about 100 live decals per client, with fade-out. Roblox terrain itself does not accept Decals.
+- **Terrain colour.** `WorldBuilder` calls `Terrain:SetMaterialColor` for Snow (236, 241, 248) and Glacier (170, 205, 230). Whether material colour tints a MaterialVariant override on terrain needs to be verified in Studio. Author the variant albedo to look right with that tint applied **and** without it.
+- **Matching props.** Every snow cap on props (SnowCap, RoofSnow, rock and bough caps) uses the same albedo and roughness as `Snow_Fresh`, so caps and terrain match in every lighting state.
+
+### 3.4 Ice
+
+Types: glacier blue ice (Glacier terrain plus serac and ice-wall MeshParts), water ice (frozen falls; climbable parts tagged `Climbable` with attribute `Ice = true`), verglas (thin clear ice on rock), lake and stream ice.
+
+**Ice is not glass.**
+- Do not use `Enum.Material.Glass`: it reads as a window pane and refracts like one.
+- Do not make large surfaces transparent.
+- Ice is opaque at mass scale. Its "depth" is painted into the albedo, and translucency is limited to thin edges.
+
+| Property | Spec |
+|---|---|
+| Base mesh | Opaque MeshPart (Transparency 0). Faceted, conchoidal fracture surfaces on broken ice. Melt-rounded, fluted surfaces on falls (vertical candles and columns 0.3–1.5 studs Ø). |
+| Blue depth | Albedo gradient: thick and recessed areas 140, 185, 215 (saturated cyan-blue); near the surface and on convex areas 210, 230, 240; snow-dusted tops 235, 242, 248. Concave fracture faces are bluest (light travels further through the ice). |
+| Internal cracks | White planar fracture lines painted in the albedo (lighter, 2–3 px), with a faint normal step where they reach the surface. 3–8 per 10 × 10-stud area, oriented consistently (stress direction). |
+| Air bubbles | White specks in columns and streaks (vertical in falls, horizontal layers in glacier ice). |
+| Dirt bands | Glacier ice: brown-grey sediment layers (bands 0.2–1 stud thick) following the flow layering. Water ice: tannin-tinted amber streaks at the base. |
+| Transparency variation | Only on an optional thin outer shell, ≤ 0.1 studs thick, on icicle tips and the thin edges of free-hanging ice. Shell Transparency 0.25–0.45 with `AlphaMode = Transparency`. Keep transparent area under 10% of any ice asset (sorting cost). |
+| Roughness | Sun-glazed vertical faces 0.10–0.20; fresh fractures 0.25; frosted and rimed 0.70; snow-covered 0.85. |
+| Metalness | 0 |
+| Climbing | Climbable ice parts: `CanQuery = true`, tag `Climbable`, attribute `Ice = true`, `CollisionFidelity = PreciseConvexDecomposition` for wall-like shapes (the climbing raycasts hit collision geometry). |
+| LOD | Ice walls: LOD0 4,000–6,000 / LOD1 2,000 / LOD2 500; icicle clusters: 600 / 200 / 50. |
+
+---
+
+## 4. Realism quality gate (15 questions)
+
+An asset ships only when every answer is **yes**. The reviewer records the answers in the asset's hand-off note, with screenshots at 3, 30 and 100 studs under overcast daylight, low sun, campfire-only night and whiteout fog.
+
+- [ ] 1. **Proportion:** Placed beside the R15 rig in Studio, does it match the target studs in this document, checked by measurement and not by eye?
+- [ ] 2. **Manufacturable:** Could a factory make it as modelled? Does every panel have a seam, and was every hard part plausibly forged, stamped, moulded or cut?
+- [ ] 3. **Connected:** Does every component physically touch what holds it, with no gaps and no floating parts, in every pose the code produces (held, stowed, R15 joints at ±90°)?
+- [ ] 4. **Straps:** Does every strap start and end at a real termination (bar-tack, buckle, ladder-lock, loop) and follow a path it could hold under tension?
+- [ ] 5. **Fasteners:** Does every buckle join two straps, every zipper follow an opening with a pull and end stops, and every knot or rivet sit where a load passes?
+- [ ] 6. **Materials:** Are metalness and roughness within the table in 1.3, with no metallic fabric, no plastic-shiny textiles and no chrome?
+- [ ] 7. **Wear:** Is wear located where hands, ground, rock, straps or tools actually touch, and absent elsewhere?
+- [ ] 8. **Dirt and mud:** Is grime driven by gravity and contact (bottoms, seams, crevices), never applied as uniform noise?
+- [ ] 9. **Snow:** Does snow sit only on surfaces facing world up, thickest where it would collect, and do the code-faded parts (`SnowCap`, `RoofSnow`) fade in without z-fighting or overhanging?
+- [ ] 10. **Water:** At 35% code darkening plus the wet roughness variant, does it read as wet fabric or rock rather than a different colour or a chalky surface?
+- [ ] 11. **Silhouette:** At 30 and 100 studs, is the asset identifiable from silhouette alone and distinct from its neighbours (for example, pack tiers)?
+- [ ] 12. **Budget:** Are LOD0, LOD1 and LOD2 within their triangle budgets, are textures ≤ 1024² on the shared atlases, and do LOD switches preserve the silhouette?
+- [ ] 13. **Code contract:** Do the names, PrimaryPart, origins and anchors (`Body`, `UpperBody`, `Lid`, `SnowCap`, `RoofSnow`, `Embers`, `Floor`, `Axe` / `Rope` / `Tarp` / `Wood`, the grip origin 1.6 studs below the axe head) match the code exactly?
+- [ ] 14. **Clean of noise:** Is it free of logos, text, toy-like bevels and colours, and any part that serves no real function?
+- [ ] 15. **Lighting:** Does it hold up in all four lighting states, with no unlit black interiors, no Neon used on anything that does not emit light, and correct shading of normal maps on both sides of DoubleSided parts?
+
+---
+
+## 5. Roblox implementation notes
+
+Statements marked *(verify)* reflect our understanding at the time of writing. Confirm them in current Studio before building on them.
+
+### 5.1 MeshPart templates, not runtime construction
+- Scripts cannot assign `MeshPart.MeshId` at runtime except through `AssetService:CreateMeshPartAsync` *(verify)*. `RenderFidelity` and `CollisionFidelity` are Studio-only properties.
+- **Ship each asset as a template Model** (for example in `ServerStorage/Assets` or `ReplicatedStorage/Assets`). `AssetFactory` builders then `:Clone()` the template and keep returning the same model names, PrimaryParts and anchor CFrames.
+- Keep the greybox builders as a fallback when a template is missing, so gameplay never breaks while art is in progress.
+- Anchor CFrames can move into the templates as `Attachment` instances named `Axe`, `Rope`, `Tarp` and `Wood` (read as `attachment.CFrame` in pack space). That way the art, not the code, owns the numbers. If that is done, keep the values in the table in 2.1.
+
+### 5.2 SurfaceAppearance
+- Applies to MeshParts. Maps: `ColorMap` (sRGB), `NormalMap` (tangent space, OpenGL / Y+ convention *(verify)*), `RoughnessMap` and `MetalnessMap` (linear).
+- Images upload at ≤ 1024² (larger ones are downsampled).
+- Texture IDs on a SurfaceAppearance cannot be changed by scripts at runtime *(verify)*. To switch between a dry and a wet look, author two SurfaceAppearance instances and **reparent a pre-authored clone**; do not edit IDs.
+- Roblox SurfaceAppearance has no emissive map *(verify)*. Glowing things (coals) use a separate `Neon` part.
+- `AlphaMode`:
+  - `Overlay`: ColorMap alpha blends the map over the MeshPart's `Color`.
+  - `Transparency`: alpha cut-out or blend for needles, flag fringes and decals.
+  - A tint-mask mode with a `SurfaceAppearance.Color` property has been added in recent engine versions *(verify name and availability)*.
+
+### 5.3 Making code tints and wetness work with SurfaceAppearance
+`EquipmentService` writes `BasePart.Color` for both the item tint and the 35% wet darkening. A SurfaceAppearance's ColorMap normally overrides the part colour. Options, in order of preference:
+1. **Tint-mask mode with `SurfaceAppearance.Color`** *(verify availability)*. Author a neutral-value ColorMap. The code multiplies the SurfaceAppearance colour instead of the part colour; this is a small change in `applyWetness` and `shell`.
+2. **`AlphaMode = Overlay`.**
+   - Paint the base fabric areas with **low alpha (0.15–0.35)**, so `MeshPart.Color` (tint and wet darkening) dominates there.
+   - Paint dirt, wear, hardware, webbing and seams with **high alpha (0.8–1.0)**, so they keep their own colour.
+   - The normal and roughness maps still carry all the fabric structure.
+   - This works with today's code unchanged.
+3. Bake per-item ColorMaps and a wet variant swapped by reparenting. This is the most memory and the least flexible; use it only if 1 and 2 fail.
+
+Whichever is chosen, the roughness change on wetting needs option 3's reparenting (roughness is not script-tintable).
+
+### 5.4 CollisionFidelity choices
+| Setting | Use for |
+|---|---|
+| `Box` | All welded cosmetics (they do not collide anyway; minimal data), stakes, posts, crates, simple colliders |
+| `Hull` | Small and medium convex rocks, fire-ring stones, logs, tree trunks |
+| `Default` | Medium props with mild concavity where the exact fit does not matter |
+| `PreciseConvexDecomposition` | Climbable cliff and ice meshes (climbing and placement raycasts hit collision geometry), large walkable rock. **Not** hollow shells (tents): convex pieces fill the interior, so use invisible Part colliders instead. |
+
+### 5.5 RenderFidelity and LOD
+- `Automatic` for almost everything: Roblox decimates with distance. `Precise` only for the held ice axe (always near the camera). `Performance` for small scatter rocks.
+- Authored LOD1 and LOD2 meshes in this document serve two purposes: as the decimation target that `Automatic` should resemble (art review), and as swap meshes for trees and large world props, switched by a client-side distance script.
+- We are not aware of a way to author custom LODs on one MeshPart *(verify)*. `Model.LevelOfDetail = StreamingMesh` gives engine-generated far representations under StreamingEnabled *(verify quality, especially on alpha foliage)*.
+- The per-mesh import limit is currently 20,000 triangles *(verify)*. Every budget here is far below it.
+
+### 5.6 Welded cosmetic gear
+Everything mounted by `EquipmentService` must be:
+- `Anchored = false`, `Massless = true`, `CanCollide = false`, `CanQuery = false`, `CanTouch = false` (as `AssetFactory.weldCosmetic` does);
+- welded with `WeldConstraint` **after** its final CFrame is set (see the comment in `EquipmentService.shell`).
+
+Also:
+- `CastShadow = false` on parts smaller than about 0.3 studs (buckles, pulls, rivets, carabiners).
+- If fluid or aerodynamic forces are enabled in the place, set `EnableFluidForces = false` on cosmetics *(verify property availability)*.
+- Never add a Humanoid-affecting mass or a collider to gear.
+- **Layered clothing** (`WrapLayer` on accessories) is a possible future replacement for per-part shells, giving clothing that deforms across R15 joints. It needs inner and outer cages authored to Roblox's cage spec and a rewrite of `EquipmentService`'s shell scheme *(verify current requirements)*. Until then, author per-part shells with 0.06-stud joint overlaps.
+
+### 5.7 MaterialVariant for terrain and parts
+- `MaterialVariant` instances live under `MaterialService`. Each has a `BaseMaterial`, ColorMap / NormalMap / RoughnessMap / MetalnessMap, `StudsPerTile`, and `Pattern` (`Regular` or `Organic`; Organic reduces visible tiling).
+- Terrain uses a variant only through a **base-material override** on `MaterialService` (one override per base material, place-wide). That is why section 3.3 maps snow states onto distinct base materials.
+- Parts can name a variant directly through `BasePart.MaterialVariant`. How MaterialVariants map onto MeshPart UVs versus world-space tiling should be checked before using them on props *(verify)*.
+- Prefer SurfaceAppearance for props and MaterialVariant for terrain and large architectural Parts.
+
+### 5.8 Budgets and memory
+- One fully kitted character ≤ 18,000 tris and ≤ 10 SurfaceAppearances. Share atlases: the webbing and hardware trim alone serves about 8 assets.
+- Unique 1024² SurfaceAppearances are the main memory cost on mobile. Keep **≤ 40 unique 1024² sets** in memory in a typical streamed area.
+- Transparent surfaces (needles, flag fringes, ice shells) cost sorting and overdraw. Keep them small, and never stack several transparent layers in view at once.
+- Shadow-casting `PointLight`s: limit them to the nearest one or two (campfire). Turn others to `Shadows = false`.
+
+---
+
+## 6. Code follow-ups found while writing these specs
+
+These are problems in the current greybox, or code changes that the meshes need. The art in this document assumes the "Fix" column; until the fix lands, artists should match the greybox and flag it.
+
+| # | Where | Problem | Fix |
+|---|---|---|---|
+| 6.1 | `AssetFactory.backpack` | The `AxeLoop` and `DaisyChain` are at x = 0, but the `Axe` anchor puts the axe at x = +0.22 w, so the axe head is not in the loop. | Move `AxeLoop` to x = +0.22 w (and add a mirror loop at −0.22 w). Add a shaft keeper 1.1–1.2 studs above it. |
+| 6.2 | `AssetFactory.backpack` / `ropeCoil` | The coil is 0.84 studs wide; the lid straps at ±0.28 w (0.81–1.04 apart) miss it, so nothing holds the rope. The straps also cannot be both flat and over a coil. | Widen the coil to 1.15. Ship `LidStraps_Flat` and `LidStraps_OverCoil`, and toggle them by rope stowed state in `EquipmentService.build`. |
+| 6.3 | `AssetFactory.woodBundle` | The bundle straps at ±0.35 do not coincide with the pack's side compression straps (+0.17 h and −0.03 h relative to the Wood anchor; tier-dependent). | Pass the tier height into `woodBundle`, or return strap heights as anchors. |
+| 6.4 | `EquipmentService` `SLOT_PARTS.Boots` | Boots cover the feet only; a mountaineering boot rises up the shin. | Add cuff shells on `LeftLowerLeg` / `RightLowerLeg` for `alpine_boots`, and have the pant shells overlap them. |
+| 6.5 | `AssetFactory.windWall` | Logs are spaced 0.714 apart at Ø 0.62, leaving 0.09-stud gaps (floating logs). Logs end 0.2 short of the posts, and one post per end cannot hold a stack. | 8 logs stacked in contact, a pair of posts at each end (z = ±0.4), and top lashings. |
+| 6.6 | `AssetFactory.trailMarker` | `Flag` uses `Neon` (fabric is not emissive). | Use Fabric or a SurfaceAppearance; the BillboardGui and PointLight already provide fog visibility. |
+| 6.7 | `AssetFactory.campfire` | `PointLight.Shadows = true` on every fire; nothing collides, so players can stand in the fire. | Limit shadowed fire lights by distance; make the ring stones collide (Hull). |
+| 6.8 | `EquipmentService.applyWetness` / `shell` | They write `BasePart.Color`, which a SurfaceAppearance ColorMap overrides unless Overlay alpha or tint-mask mode is used. | Follow 5.3 (option 1 needs a small code change; option 2 needs none). |
+| 6.9 | `EquipmentService`, `BuildingService` | `SnowCap` is found with `FindFirstChild` and `RoofSnow` with `GetChildren`: both must be **direct children** of the model. | Keep these meshes as direct children in the templates. |
+| 6.10 | `AssetFactory.pineTree` / `rock` | `Bough` uses `Grass` material and the snow parts use `Snow` Part material; mesh replacements will use SurfaceAppearance. | Clone tree and rock templates per band and family (3.1, 3.2). |
+| 6.11 | All builders | Runtime `Instance.new` cannot produce art meshes. | Clone templates (5.1); keep greybox as the fallback. |
 

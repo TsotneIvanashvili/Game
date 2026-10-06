@@ -241,7 +241,7 @@ function AssetFactory.backpack(tier: string, color: Color3): (Model, { [string]:
 	part(model, {
 		name = "AxeLoop",
 		size = Vector3.new(0.14, 0.14, 0.06),
-		cframe = CFrame.new(0, cy - h * 0.42, d + 0.03),
+		cframe = CFrame.new(w * 0.22, cy - h * 0.42, d + 0.03), -- under the stowed axe's head
 		color = Color3.fromRGB(30, 30, 30),
 		material = Enum.Material.Fabric,
 	})
@@ -817,7 +817,7 @@ function AssetFactory.trailMarker(at: CFrame): Model
 		size = Vector3.new(0.04, 0.8, 1.2),
 		cframe = at * CFrame.new(0, 5.0, 0.6),
 		color = Color3.fromRGB(255, 120, 20),
-		material = Enum.Material.Neon,
+		material = Enum.Material.Fabric, -- the PointLight and billboard make it visible in fog
 	})
 	local light = Instance.new("PointLight")
 	light.Range = 10
