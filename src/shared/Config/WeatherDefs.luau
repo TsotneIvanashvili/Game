@@ -61,7 +61,7 @@ local states: { [string]: WeatherState } = {
 	},
 	Fog = {
 		id = "Fog",
-		rainName = "Dense Fog",
+		rainName = "Whiteout Fog",
 		snowName = "Whiteout Fog",
 		params = {
 			tempOffsetC = -1,
@@ -95,7 +95,7 @@ local states: { [string]: WeatherState } = {
 	},
 	LightPrecip = {
 		id = "LightPrecip",
-		rainName = "Light Rain",
+		rainName = "Light Snow",
 		snowName = "Light Snow",
 		params = {
 			tempOffsetC = -2,
@@ -112,7 +112,7 @@ local states: { [string]: WeatherState } = {
 	},
 	HeavyPrecip = {
 		id = "HeavyPrecip",
-		rainName = "Heavy Rain",
+		rainName = "Heavy Snow",
 		snowName = "Heavy Snow",
 		params = {
 			tempOffsetC = -5,
@@ -129,10 +129,10 @@ local states: { [string]: WeatherState } = {
 	},
 	Storm = {
 		id = "Storm",
-		rainName = "Thunderstorm",
+		rainName = "Blizzard",
 		snowName = "Blizzard",
 		params = {
-			tempOffsetC = -7, -- base camp stays just above freezing (rain), the ridge gets a blizzard
+			tempOffsetC = -10,
 			windMs = 20,
 			precipitation = 1,
 			fog = 0.85,
@@ -151,8 +151,14 @@ return {
 	Initial = "Clear",
 	TransitionSeconds = 75, -- natural blend time between neighbours
 	ForcedTransitionSeconds = 40, -- blend time per step when the director pushes a storm in
-	RainSnowSplitC = 1,
-	BaseTempC = 9, -- temperature at base camp elevation in clear weather
+	-- The world is always snow (art direction v2). Keeping the split as an API means a future
+	-- warmer mountain only has to change this number.
+	RainSnowSplitC = math.huge,
+	BaseTempC = -12, -- base camp (y=0) on a clear day, before the time-of-day offset
+	-- Day/night: one in-game day lasts DayLengthSeconds; nights are this much colder.
+	DayLengthSeconds = 20 * 60,
+	StartClockTime = 9,
+	NightTempDropC = 6,
 	LapseRateCPer1000m = 6.5,
 	WindDirectionDriftDegPerSec = 1.5,
 }

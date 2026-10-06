@@ -29,6 +29,7 @@ type Camp = {
 	radius: number,
 	center: Vector3,
 	spawn: CFrame,
+	ring: BasePart?,
 }
 
 local camps: { [number]: Camp } = {}
@@ -103,6 +104,7 @@ local function signLogbook(player: Player, camp: Camp)
 		return
 	end
 	record.stats.highestCheckpoint = camp.index
+	remote().fire(player, "Banner", "Checkpoint reached: " .. camp.name, "checkpoint")
 	local profile = Registry.get("DataService").get(player)
 	if profile then
 		profile.totals.checkpoints += 1
@@ -136,6 +138,30 @@ local function setupCamp(model: Instance)
 		spawn = if spawnPart then spawnPart.CFrame + Vector3.new(0, 3, 0) else model:GetPivot(),
 	}
 	camps[index] = camp
+
+	-- Checkpoint ring: stepping into it signs you in (the logbook prompt still works too).
+	local ring = model:FindFirstChild("CheckpointRing", true)
+	if ring and ring:IsA("BasePart") then
+		camp.ring = ring
+	end
+	-- Sleep spots (mats in camp tents): resting here heals sprains/fractures over time.
+	for _, spot in model:GetDescendants() do
+		if spot:IsA("BasePart") and CollectionService:HasTag(spot, "SleepSpot") then
+			PromptUtil.create(spot, {
+				action = "Sleep",
+				object = camp.name,
+				key = Enum.KeyCode.E,
+				distance = 6,
+				offset = Vector3.new(0, 1, 0),
+			}, function(player)
+				local record = PlayerStore.getActive(player)
+				if record and not record.downed and not record.carrying then
+					Registry.get("SurvivalService").setResting(player, true)
+					remote().notify(player, "You lie down and rest. Move to get up.", "info", "sleep", 10)
+				end
+			end)
+		end
+	end
 
 	local logbook = model:FindFirstChild("Logbook")
 	local logPart = logbook and (if logbook:IsA("Model") then logbook.PrimaryPart else logbook)
@@ -253,6 +279,18 @@ function CampService.Start()
 			task.wait(1)
 			for _, player in Players:GetPlayers() do
 				local record, _, _, root = PlayerStore.getActive(player)
+				if record and root and not record.downed then
+					for _, camp in camps do
+						local ring = camp.ring
+						if ring and camp.index > record.checkpoint and ring.Parent then
+							local offset = root.Position - ring.Position
+							local radius = ring:GetAttribute("Radius") or 6
+							if Vector3.new(offset.X, 0, offset.Z).Magnitude <= radius and math.abs(offset.Y) < 10 then
+								signLogbook(player, camp)
+							end
+						end
+					end
+				end
 				if record and root and not record.stats.sectionComplete and not record.downed then
 					for _, marker in sectionEnds do
 						local radius = marker:GetAttribute("Radius") or 20

@@ -52,7 +52,7 @@ local SurvivalConfig = {
 
 	Warmth = {
 		ComfortTempC = 8, -- felt temperature at which a region is in balance
-		InsulationToCelsius = 5, -- each insulation point is worth this many degrees
+		InsulationToCelsius = 6, -- each insulation point is worth this many degrees (tuned for -10..-40 °C)
 		WindChillPerMs = 0.7, -- degrees lost per m/s of wind that reaches the skin
 		WetnessChillC = 5, -- degrees lost at full wetness
 		ExertionHeatC = { idle = 0, walk = 1.5, sprint = 5, climb = 5, carry = 4, rest = 0 },

@@ -29,6 +29,7 @@ local FIRE_START_FUEL = 180
 local FIRE_FUEL_PER_WOOD = 90
 local FIRE_MAX_FUEL = 600
 local SHELTER_DECAY_WIND = 15 -- m/s; stronger wind than this wears a tarp down
+local TENT_DECAY_WIND = 19 -- a staked dome tent shrugs off all but the worst storm
 local WIND_WALL_RADIUS = 8
 
 export type Structure = {
@@ -414,6 +415,69 @@ local function spawnStructure(player: Player, recipe: RecipeDefs.Recipe, frame: 
 		end)
 		Registry.get("ProgressionService")
 			.achieve(player, "first_shelter", ProgressionConfig.XP.FirstShelter, "First emergency shelter")
+	elseif recipe.id == "tent" then
+		-- A real tent: warmer and sturdier than a tarp, and it packs back up into your bag.
+		local colors = {
+			Color3.fromRGB(245, 200, 40),
+			Color3.fromRGB(40, 120, 220),
+			Color3.fromRGB(210, 45, 45),
+			Color3.fromRGB(235, 110, 30),
+		}
+		local interiorFrame: CFrame, interiorSize: Vector3
+		model, interiorFrame, interiorSize = AssetFactory.domeTent(frame, colors[math.random(1, #colors)], nil)
+		s = register({
+			id = 0,
+			kind = recipe.id,
+			model = model,
+			position = frame.Position,
+			radius = math.max(interiorSize.X, interiorSize.Z) / 2 + 1,
+			permanent = false,
+			shelterFrame = interiorFrame,
+			shelterSize = interiorSize,
+			windFactor = 0.1,
+			precipBlocked = true,
+			durability = 100,
+			snow = 0,
+		})
+		model.Parent = folder
+		local anchor = model.PrimaryPart :: BasePart
+		PromptUtil.create(
+			anchor,
+			{
+				action = "Sleep in tent",
+				object = "Tent",
+				key = Enum.KeyCode.E,
+				offset = Vector3.new(0, 1.5, 0),
+				distance = 8,
+			},
+			function(p)
+				Registry.get("SurvivalService").setResting(p, true)
+			end
+		)
+		PromptUtil.create(
+			anchor,
+			{
+				action = "Pack up tent",
+				object = "Tent",
+				key = Enum.KeyCode.F,
+				offset = Vector3.new(0, 3, 0),
+				hold = 2,
+				distance = 8,
+			},
+			function(p)
+				if not table.find(structures, s) then
+					return -- already packed by someone else
+				end
+				if Registry.get("InventoryService").add(p, "tent_pack", 1) <= 0 then
+					remote().notify(p, "No room in your pack for the tent.", "warn")
+					return
+				end
+				removeStructure(s)
+				remote().notify(p, "You pack up the tent.", "good")
+			end
+		)
+		Registry.get("ProgressionService")
+			.achieve(player, "first_shelter", ProgressionConfig.XP.FirstShelter, "First emergency shelter")
 	elseif recipe.id == "wind_wall" then
 		model = AssetFactory.windWall(frame)
 		s = register({
@@ -546,10 +610,11 @@ local function simulate(dt: number)
 				extinguish(s)
 			end
 		end
-		if s.durability and s.kind == "tarp_shelter" then
+		if s.durability and (s.kind == "tarp_shelter" or s.kind == "tent") then
 			local sample = weather.sampleAt(s.position)
-			if sample.windMs > SHELTER_DECAY_WIND then
-				s.durability -= (sample.windMs - SHELTER_DECAY_WIND) * 0.08 * dt
+			local decayAbove = if s.kind == "tent" then TENT_DECAY_WIND else SHELTER_DECAY_WIND
+			if sample.windMs > decayAbove then
+				s.durability -= (sample.windMs - decayAbove) * 0.08 * dt
 			end
 			if sample.isSnow and sample.precipitation > 0.05 then
 				s.snow = math.min(1, (s.snow or 0) + 0.01 * sample.precipitation * dt)
@@ -566,7 +631,9 @@ local function simulate(dt: number)
 					if root and (root.Position - s.position).Magnitude < 30 then
 						remote().notify(
 							p,
-							"The tarp is tearing loose in the wind! Reinforce it with rope.",
+							if s.kind == "tent"
+								then "The tent is straining in the wind!"
+								else "The tarp is tearing loose in the wind! Reinforce it with rope.",
 							"danger",
 							"tarp" .. s.id,
 							30
@@ -578,7 +645,13 @@ local function simulate(dt: number)
 				for _, p in Players:GetPlayers() do
 					local root = p.Character and p.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
 					if root and (root.Position - s.position).Magnitude < 40 then
-						remote().notify(p, "The tarp shelter collapsed!", "danger")
+						remote().notify(
+							p,
+							if s.kind == "tent"
+								then "The tent was torn apart by the storm!"
+								else "The tarp shelter collapsed!",
+							"danger"
+						)
 					end
 				end
 				removeStructure(s)

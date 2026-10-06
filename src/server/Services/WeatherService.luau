@@ -4,7 +4,7 @@
 -- The blended state is published as attributes on ReplicatedStorage.WorldState; clients
 -- render it (sky, fog, particles, audio) but the server alone uses it for survival.
 
-local Players = game:GetService("Players")
+local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
@@ -30,6 +30,7 @@ local holdRemaining = 0
 local forcedPath: { string } = {}
 local params: WeatherModel.Params = WeatherDefs.States[WeatherDefs.Initial].params
 local windAngle = rng:NextNumber(0, math.pi * 2)
+local clockTime = WeatherDefs.StartClockTime
 
 local function beginTransition(nextId: string, seconds: number)
 	fromId = toId
@@ -66,6 +67,7 @@ local function step(dt: number)
 		end
 	end
 	params = currentParams()
+	clockTime = (clockTime + dt * 24 / WeatherDefs.DayLengthSeconds) % 24
 	windAngle += math.rad(WeatherDefs.WindDirectionDriftDegPerSec) * dt * (rng:NextNumber() - 0.3)
 end
 
@@ -79,12 +81,15 @@ local function publish()
 	worldState:SetAttribute("Fog", math.floor(params.fog * 100 + 0.5) / 100)
 	worldState:SetAttribute("Cloud", math.floor(params.cloud * 100 + 0.5) / 100)
 	worldState:SetAttribute("TempOffsetC", math.floor(params.tempOffsetC * 10 + 0.5) / 10)
+	worldState:SetAttribute("ClockTime", math.floor(clockTime * 100 + 0.5) / 100)
+	-- The server owns time of day; Lighting.ClockTime replicates to every client.
+	Lighting.ClockTime = clockTime
 end
 
 -- Weather as experienced at a point (temperature depends on elevation).
 function WeatherService.sampleAt(position: Vector3)
 	local elevation = WeatherModel.elevationM(position.Y)
-	local airTemp = WeatherModel.airTemperature(elevation, params)
+	local airTemp = WeatherModel.airTemperature(elevation, params, clockTime)
 	local dominant = if blend >= 0.5 then toId else fromId
 	return {
 		airTempC = airTemp,
@@ -100,6 +105,10 @@ end
 
 function WeatherService.params(): WeatherModel.Params
 	return params
+end
+
+function WeatherService.clockTime(): number
+	return clockTime
 end
 
 function WeatherService.currentId(): string
@@ -138,23 +147,20 @@ function WeatherService.Start()
 			publish()
 		end
 	end)
-	WeatherService.StateChanged:Connect(function(_, nextId)
-		local state = WeatherDefs.States[nextId]
-		if not state.severe then
-			return
+	WeatherService.StateChanged:Connect(function(previousId, nextId)
+		local RemoteGuard = Registry.get("RemoteGuard")
+		if nextId == "Storm" then
+			RemoteGuard.fireAll("Banner", "A blizzard is coming. Find shelter!", "storm")
+		elseif nextId == "HeavyPrecip" and previousId ~= "Storm" then
+			RemoteGuard.fireAll("Banner", "Heavy snow rolling in. Stay close to the route markers.", "storm")
+		elseif nextId == "Fog" then
+			RemoteGuard.fireAll("Banner", "Whiteout fog. Follow the red markers.", "info")
+		elseif previousId == "Storm" then
+			RemoteGuard.fireAll("Banner", "The storm is passing.", "info")
 		end
-		-- Name it as each player will experience it: blizzard on the ridge, rain below.
-		for _, player in Players:GetPlayers() do
-			local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
-			if root then
-				local airTemp = WeatherModel.airTemperature(
-					WeatherModel.elevationM(root.Position.Y),
-					WeatherDefs.States[nextId].params
-				)
-				local name = WeatherModel.displayName(nextId, airTemp)
-				Registry.get("RemoteGuard")
-					.notify(player, "SEVERE WEATHER APPROACHING: " .. string.upper(name), "danger")
-			end
+		local state = WeatherDefs.States[nextId]
+		if state.severe then
+			RemoteGuard.notifyAll("SEVERE WEATHER APPROACHING: " .. string.upper(state.snowName), "danger")
 		end
 	end)
 end

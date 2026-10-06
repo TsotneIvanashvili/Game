@@ -87,9 +87,26 @@ function WeatherModel.elevationM(y: number): number
 	return GameConfig.BASE_ELEVATION_M + y * GameConfig.ELEVATION_M_PER_STUD
 end
 
-function WeatherModel.airTemperature(elevationM: number, params: Params): number
+function WeatherModel.airTemperature(elevationM: number, params: Params, clockTime: number?): number
 	local above = (elevationM - GameConfig.BASE_ELEVATION_M) / 1000
-	return WeatherDefs.BaseTempC - above * WeatherDefs.LapseRateCPer1000m + params.tempOffsetC
+	local timeOffset = if clockTime then WeatherModel.timeOfDayOffset(clockTime) else 0
+	return WeatherDefs.BaseTempC - above * WeatherDefs.LapseRateCPer1000m + params.tempOffsetC + timeOffset
+end
+
+-- 0 by day, -NightTempDropC in the dead of night, smooth through dawn and dusk.
+-- Coldest 01:00-05:00, warmest 11:00-16:00.
+function WeatherModel.timeOfDayOffset(clockTime: number): number
+	local h = clockTime % 24
+	local night = 1 -- 00:00-05:00 is full night
+	if h > 5 and h < 11 then
+		night = 1 - (h - 5) / 6
+	elseif h >= 11 and h <= 16 then
+		night = 0
+	elseif h > 16 then
+		night = (h - 16) / 8 -- 16:00 -> 0, 24:00 -> 1 (no jump at midnight)
+	end
+	night = math.clamp(night, 0, 1)
+	return -WeatherDefs.NightTempDropC * (night * night * (3 - 2 * night))
 end
 
 function WeatherModel.isSnow(airTempC: number): boolean

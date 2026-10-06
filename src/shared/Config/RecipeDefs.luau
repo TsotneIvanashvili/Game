@@ -63,6 +63,18 @@ local list: { Recipe } = {
 		buildSeconds = 6,
 	}),
 	r({
+		id = "tent",
+		name = "Expedition Tent",
+		section = "Shelters",
+		description = "Pitch your carried tent: blocks wind and snow, sleep inside, pack it up to move on.",
+		cost = { tent_pack = 1 },
+		footprint = Vector3.new(9, 7, 9),
+		maxSlope = 20,
+		unlockedByDefault = true,
+		implemented = true,
+		buildSeconds = 5,
+	}),
+	r({
 		id = "wind_wall",
 		name = "Wind Wall",
 		section = "Shelters",

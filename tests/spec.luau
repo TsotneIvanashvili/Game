@@ -178,9 +178,12 @@ test("zones are ordered top-down", function()
 		truthy(zone.minY < last, zone.id)
 		last = zone.minY
 	end
-	eq(ZoneDefs.at(-50).id, "BaseForest")
-	eq(ZoneDefs.at(60).id, "RockyForest")
-	eq(ZoneDefs.at(150).id, "Snowline")
+	eq(ZoneDefs.at(-50).id, "BaseValley")
+	eq(ZoneDefs.at(200).id, "Icefall")
+	eq(ZoneDefs.at(800).id, "Summit")
+	for _, zone in ZoneDefs.List do
+		truthy(zone.snowCover, zone.id .. " must be snow-covered (the world is always snow)")
+	end
 end)
 
 test("rank lookup", function()
@@ -663,16 +666,116 @@ test("pickNext only returns neighbours", function()
 	end
 end)
 
-test("temperature: snow at the ridge, rain at base camp", function()
+test("the world is always snow, colder with altitude and at night", function()
 	local clear = WeatherDefs.States.Clear.params
-	local baseTemp = WeatherModel.airTemperature(WeatherModel.elevationM(0), clear)
-	local ridgeTemp = WeatherModel.airTemperature(WeatherModel.elevationM(150), clear)
-	truthy(not WeatherModel.isSnow(baseTemp), "base " .. baseTemp)
-	truthy(ridgeTemp < baseTemp)
-	local storm = WeatherDefs.States.Storm.params
-	truthy(WeatherModel.isSnow(WeatherModel.airTemperature(WeatherModel.elevationM(150), storm)))
-	eq(WeatherModel.displayName("Storm", -10), "Blizzard")
-	eq(WeatherModel.displayName("Storm", 10), "Thunderstorm")
+	local base = WeatherModel.airTemperature(WeatherModel.elevationM(0), clear, 13)
+	local summit = WeatherModel.airTemperature(WeatherModel.elevationM(800), clear, 13)
+	truthy(WeatherModel.isSnow(base) and WeatherModel.isSnow(summit), "snow everywhere")
+	truthy(summit < base - 15, "summit much colder")
+	local night = WeatherModel.airTemperature(WeatherModel.elevationM(0), clear, 3)
+	near(base - night, WeatherDefs.NightTempDropC, 1e-6, "night drop")
+	eq(WeatherModel.displayName("Storm", 10), "Blizzard")
+	eq(WeatherModel.displayName("LightPrecip", -5), "Light Snow")
+end)
+
+test("time of day offset is continuous across the whole day", function()
+	local prev = WeatherModel.timeOfDayOffset(0)
+	for i = 1, 24 * 60 do
+		local h = i / 60
+		local v = WeatherModel.timeOfDayOffset(h)
+		truthy(math.abs(v - prev) < 0.1, string.format("jump at %.2f h", h))
+		truthy(v <= 0 and v >= -WeatherDefs.NightTempDropC, "range")
+		prev = v
+	end
+	eq(WeatherModel.timeOfDayOffset(13), 0)
+	eq(WeatherModel.timeOfDayOffset(3), -WeatherDefs.NightTempDropC)
+end)
+
+-- Climate design targets for the expedition route. Gear is defined inline so these tests
+-- pin the CLIMATE, independent of item tuning. Starter = the free expedition suit.
+local function C(slot, ins, wind, water, wet)
+	return {
+		clothing = {
+			slot = slot,
+			insulation = ins,
+			windproof = wind,
+			waterproof = water,
+			wetPenalty = wet,
+			mobility = 1,
+		},
+	}
+end
+local STARTER_SUIT = {
+	C("BaseLayer", { Torso = 1.5, Legs = 1 }, 0, 0, 0.25),
+	C("Jacket", { Torso = 5, Head = 1 }, 0.85, 0.6, 0.5),
+	C("Pants", { Legs = 3.5 }, 0.8, 0.7, 0.35),
+	C("Boots", { Feet = 3 }, 0.8, 0.85, 0.3),
+	C("Gloves", { Hands = 3 }, 0.75, 0.6, 0.35),
+	C("Head", { Head = 1.5 }, 0.5, 0.5, 0.1),
+	C("Face", { Head = 1.5 }, 0.7, 0.1, 0.35),
+	C("Eyes", { Head = 0.5 }, 0.6, 0.5, 0),
+}
+local UPGRADED_SUIT = table.clone(STARTER_SUIT)
+UPGRADED_SUIT[2] = C("Jacket", { Torso = 8, Head = 1.5 }, 0.9, 0.5, 0.6)
+UPGRADED_SUIT[4] = C("Boots", { Feet = 5 }, 0.9, 0.9, 0.3)
+UPGRADED_SUIT[5] = C("Gloves", { Hands = 5 }, 0.85, 0.6, 0.35)
+
+-- Seconds until the first frostbite injury (nil = none within `seconds`).
+local function secondsToFrostbite(suit, y, stateId, clock, seconds)
+	local s = SurvivalModel.newState()
+	local p = WeatherDefs.States[stateId].params
+	local e = {
+		airTempC = WeatherModel.airTemperature(WeatherModel.elevationM(y), p, clock),
+		windMs = p.windMs * ZoneDefs.at(y).windExposure,
+		precipitation = p.precipitation,
+		isSnow = true,
+		inWater = false,
+		fireHeatC = 0,
+		exertion = "walk",
+	}
+	local c = {
+		exertion = "walk",
+		elevationM = WeatherModel.elevationM(y),
+		env = e,
+		gear = WarmthModel.computeGear(suit),
+		weightRatio = 0.5,
+		campResting = false,
+	}
+	for i = 1, math.floor(seconds / 0.2) do
+		for _, ev in (SurvivalModel.step(s, c, 0.2)) do
+			if ev:find("Injury:Frostbite") then
+				return i * 0.2
+			end
+		end
+	end
+	return nil
+end
+
+test("climate: starter suit is comfortable at base camp on a clear day", function()
+	eq(secondsToFrostbite(STARTER_SUIT, 0, "Clear", 13, 1200), nil)
+end)
+
+test("climate: a storm at base camp is dangerous within ~3-6 minutes in the starter suit", function()
+	local t = secondsToFrostbite(STARTER_SUIT, 0, "Storm", 13, 600)
+	truthy(t and t > 150 and t < 360, "got " .. tostring(t))
+end)
+
+test("climate: starter suit lasts 10+ minutes at Camp 1 in clear weather", function()
+	local t = secondsToFrostbite(STARTER_SUIT, 200, "Clear", 13, 1200)
+	truthy(t == nil or t > 600, "got " .. tostring(t))
+end)
+
+test("climate: upgrades make Camp 2 comfortable and a clear summit push possible", function()
+	eq(secondsToFrostbite(UPGRADED_SUIT, 450, "Clear", 13, 900), nil)
+	local starter = secondsToFrostbite(STARTER_SUIT, 800, "Clear", 13, 900)
+	local upgraded = secondsToFrostbite(UPGRADED_SUIT, 800, "Clear", 13, 900)
+	truthy(starter and starter < 240, "starter at summit should be short: " .. tostring(starter))
+	truthy(upgraded and upgraded > 360, "upgraded summit push should allow 6+ min: " .. tostring(upgraded))
+end)
+
+test("climate: a blizzard on the summit is deadly even in upgraded gear", function()
+	local t = secondsToFrostbite(UPGRADED_SUIT, 800, "Storm", 13, 600)
+	truthy(t and t < 200, "got " .. tostring(t))
 end)
 
 H.report()

@@ -52,3 +52,42 @@ for _, entry in loaded do
 	end
 end
 print(string.format("[Server] %d services started in %.2fs", #loaded, os.clock() - started))
+
+-- Startup report: one line the player can paste back so problems are visible without Studio
+-- access on our side. Zero of anything here means that part of the world failed to build.
+task.defer(function()
+	local CollectionService = game:GetService("CollectionService")
+	local function count(tag: string): number
+		return #CollectionService:GetTagged(tag)
+	end
+	local parts = 0
+	local mountain = workspace:FindFirstChild("Mountain")
+	if mountain then
+		for _, d in mountain:GetDescendants() do
+			if d:IsA("BasePart") then
+				parts += 1
+			end
+		end
+	end
+	local rings = 0
+	for _, camp in CollectionService:GetTagged("Camp") do
+		if camp:FindFirstChild("CheckpointRing", true) then
+			rings += 1
+		end
+	end
+	print(
+		string.format(
+			"[Report] camps %d | checkpoint rings %d | sleep spots %d | supply crates %d | outfitters %d | wood %d | water %d | hazards %d | summit %d | world parts %d",
+			count("Camp"),
+			rings,
+			count("SleepSpot"),
+			count("SupplyCrate"),
+			count("Outfitter"),
+			count("WoodSource"),
+			count("WaterSource"),
+			count("RockfallZone"),
+			count("SectionEnd"),
+			parts
+		)
+	)
+end)

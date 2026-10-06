@@ -8,8 +8,8 @@ local GameConfig = {
 
 	-- Altitude is compressed for gameplay: every stud of height represents this many meters of
 	-- "virtual" elevation. A 250-stud climb therefore reads as ~2000 m on the altimeter.
-	BASE_ELEVATION_M = 1200,
-	ELEVATION_M_PER_STUD = 8,
+	BASE_ELEVATION_M = 300,
+	ELEVATION_M_PER_STUD = 4, -- base camp y=0 reads 300 m; the summit (y~800) reads ~3500 m
 
 	-- Server simulation cadence. One loop updates every player; never one thread per stat.
 	SURVIVAL_TICK_SECONDS = 0.2,
