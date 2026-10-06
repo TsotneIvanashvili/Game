@@ -21,14 +21,15 @@
 --   -> Summit (y 800): small flat top, flag and cairn, SectionEnd
 --
 -- Terrain primitives (TerrainModel.ops builds them in this order):
---   Ground    big Snow tiles everywhere (top y 0) so no void or world floor is ever visible
---   Mountains Glacier balls (x, z, r, top) whose gentle tops are re-painted Snow
---   Crests    45-degree rolled prisms under the ridge walkway (Glacier flanks)
+--   Ground    one-voxel Snow tiles under the play area (a Part skirt continues outwards)
+--   Mountains Glacier domes (x, z, r, top) near the trail whose gentle tops are re-painted Snow
+--   Crests    45-degree rolled prisms under the ridge walkway, on keels down to the ground
 --   Slabs     route pieces: Glacier body + Snow top along from -> to (vertical Glacier sides)
 --   Pads      round flat landings (Glacier body + Snow top)
 --   Shelves   flat axis-aligned benches / camp shelves (min.Y = bottom, max.Y = top)
 --   Crevasses Air cuts across the surface (depth below the local top) + escape ramps
 --   Outcrops  small Rock balls near the summit
+-- Not terrain: Scenery (Part-built backdrop peaks) and the Skirt (flat Snow Parts).
 
 local V = Vector3.new
 
@@ -51,9 +52,19 @@ local SUMMIT_EDGE = (function()
 	local t = 1 - SUMMIT_RADIUS / math.sqrt(dx * dx + dz * dz)
 	return V(R4.X + dx * t, SUMMIT.Y, R4.Z + dz * t)
 end)()
-local NOTCH = along(R1, R2, 0.5)
-local NOTCH_HALF = 13 / (R2 - R1).Magnitude -- bridge anchors 13 studs either side
-local RIDGE_DIR = V(R2.X - R1.X, 0, R2.Z - R1.Z)
+-- Flat bend landings on the ridge: the walkway runs rim to rim, `BEND` studs either side.
+local BEND = 9
+local function rim(center: Vector3, toward: Vector3, sign: number): Vector3
+	local dx, dz = toward.X - center.X, toward.Z - center.Z
+	local m = math.sqrt(dx * dx + dz * dz)
+	return V(center.X + dx / m * BEND * sign, center.Y, center.Z + dz / m * BEND * sign)
+end
+local R1_IN, R1_OUT = rim(R1, R0, 1), rim(R1, R2, 1)
+local R3_IN, R3_OUT = rim(R3, STEP, 1), rim(R3, R4, 1)
+local R4_IN, R4_OUT = rim(R4, R3, 1), rim(R4, SUMMIT, 1)
+local NOTCH = along(R1_OUT, R2, 0.5)
+local NOTCH_HALF = 13 / (R2 - R1_OUT).Magnitude -- bridge anchors 13 studs either side
+local RIDGE_DIR = V(R2.X - R1_OUT.X, 0, R2.Z - R1_OUT.Z)
 
 -- Crevasse field: plateau top is y = 200 + 0.06 * (z - 1700).
 local function plateauY(z: number): number
@@ -64,142 +75,159 @@ local WorldLayout = {
 	Version = 2,
 	Seed = 7331,
 
-	-- Ground under and around everything (top y 0). The outer area is a snow skirt that the
-	-- enclosing mountains and the haze hide; it means no sightline ever ends in the void.
-	Ground = { x0 = -2400, z0 = -2000, x1 = 2400, z1 = 6400, top = 0, thickness = 8, tile = 800 },
+	-- Terrain ground (top y 0, one voxel thick) under the whole play area. Beyond it a flat
+	-- ring of Snow Parts (the skirt) and Part-built backdrop peaks finish the view, so no
+	-- sightline ever ends in the void while the terrain stays small.
+	Ground = { x0 = -800, z0 = -700, x1 = 800, z1 = 4500, top = 0, thickness = 4, tile = 800 },
+	Skirt = { x0 = -3200, z0 = -2800, x1 = 3200, z1 = 7200, top = -0.5 },
 
 	-- Every point inside these bounds must have terrain (checked by tests).
-	Bounds = { x0 = -900, z0 = -700, x1 = 900, z1 = 4700 },
+	Bounds = { x0 = -800, z0 = -700, x1 = 800, z1 = 4500 },
 
+	-- Filled first (then camps are built, then the rest of the mountain).
+	FirstBuild = { x0 = -700, z0 = -700, x1 = 700, z1 = 700 },
+
+	-- Terrain domes close to the trail: the Base Camp basin and the valley. Further up, the
+	-- corridor is walled by Glacier canyon walls and the backdrop peaks stand beyond them.
 	Mountains = {
-		-- South wall behind Base Camp
-		{ x = 0, z = -340, r = 260, top = 360 },
-		{ x = -300, z = -260, r = 240, top = 320 },
-		{ x = 300, z = -280, r = 240, top = 340 },
-		-- Base Camp flanks
-		{ x = -360, z = -20, r = 240, top = 300 },
-		{ x = 360, z = 20, r = 240, top = 320 },
-		-- Valley walls
-		{ x = -360, z = 260, r = 230, top = 330 }, -- the avalanche slope
-		{ x = 390, z = 300, r = 240, top = 300 },
-		{ x = -380, z = 520, r = 240, top = 380 },
-		{ x = 380, z = 560, r = 230, top = 340 },
-		{ x = 330, z = 700, r = 220, top = 300 },
-		{ x = -560, z = 780, r = 240, top = 400 },
-		-- Headwall flanks
-		{ x = -560, z = 1080, r = 260, top = 440 },
-		{ x = 540, z = 1060, r = 250, top = 420 },
-		{ x = -560, z = 1380, r = 260, top = 480 },
-		{ x = 560, z = 1360, r = 260, top = 470 },
-		-- Crevasse field flanks
-		{ x = -560, z = 1700, r = 260, top = 520 },
-		{ x = 560, z = 1680, r = 260, top = 500 },
-		{ x = -560, z = 2000, r = 270, top = 540 },
-		{ x = 560, z = 2000, r = 280, top = 560 },
-		{ x = -580, z = 2300, r = 300, top = 600 },
-		{ x = 630, z = 2300, r = 290, top = 580 },
-		-- Glacier terrace flanks
-		{ x = -640, z = 2600, r = 300, top = 600 },
-		{ x = 640, z = 2620, r = 300, top = 590 },
-		{ x = -640, z = 2900, r = 300, top = 600 },
-		{ x = 640, z = 2920, r = 300, top = 600 },
-		-- Domes under the ridge: they hold up the crests (60+ studs under the walkway)
-		{ x = -80, z = 3240, r = 300, top = 420 },
-		{ x = -50, z = 3510, r = 300, top = 490 },
-		{ x = 0, z = 3800, r = 320, top = 590 },
-		{ x = 10, z = 4110, r = 350, top = 700 }, -- summit cone
-		{ x = 0, z = 4120, r = 180, top = 760 }, -- summit shoulder (sits on the cone)
-		{ x = -200, z = 3330, r = 220, top = 440 }, -- outside of the bends
-		{ x = 110, z = 3580, r = 260, top = 510 },
-		{ x = -130, z = 3870, r = 300, top = 610 },
-		-- Peaks around the ridge and summit: a base dome on the ground and a tip on top of it
-		{ x = -620, z = 3300, r = 300, top = 600 },
-		{ x = -620, z = 3300, r = 150, top = 800 },
-		{ x = 600, z = 3300, r = 300, top = 600 },
-		{ x = 600, z = 3300, r = 140, top = 760 },
-		{ x = -600, z = 3800, r = 300, top = 600 },
-		{ x = -600, z = 3800, r = 180, top = 880 },
-		{ x = 600, z = 3780, r = 300, top = 600 },
-		{ x = 600, z = 3780, r = 160, top = 840 },
-		{ x = -480, z = 4400, r = 300, top = 600 },
-		{ x = -480, z = 4400, r = 180, top = 880 },
-		{ x = 480, z = 4420, r = 300, top = 600 },
-		{ x = 480, z = 4420, r = 170, top = 880 },
-		{ x = 0, z = 4720, r = 300, top = 600 },
-		{ x = 0, z = 4720, r = 200, top = 920 },
+		{ x = 0, z = -300, r = 170, top = 300 },
+		{ x = -270, z = -240, r = 160, top = 280 },
+		{ x = 270, z = -250, r = 160, top = 290 },
+		{ x = -320, z = -20, r = 160, top = 270 },
+		{ x = 320, z = 20, r = 160, top = 280 },
+		{ x = -330, z = 250, r = 160, top = 280 },
+		{ x = -330, z = 480, r = 170, top = 300 }, -- the avalanche slope
+		{ x = 360, z = 300, r = 160, top = 270 },
+		{ x = 360, z = 560, r = 160, top = 290 },
+		{ x = 300, z = 760, r = 150, top = 260 },
+		{ x = -430, z = 760, r = 160, top = 300 },
+		-- Outside the canyon walls, so the view from the ridge is mountains, not a plain
+		{ x = -600, z = 1300, r = 200, top = 380 },
+		{ x = 600, z = 1350, r = 200, top = 390 },
+		{ x = -620, z = 2000, r = 200, top = 400 },
+		{ x = 620, z = 2050, r = 200, top = 390 },
+		{ x = -620, z = 2700, r = 200, top = 400 },
+		{ x = 620, z = 2750, r = 200, top = 400 },
+		{ x = -580, z = 3450, r = 200, top = 390 },
+		{ x = 560, z = 3500, r = 200, top = 400 },
 	},
 
-	-- Knife-edge crests under the ridge walkway (top edge `drop` studs under the route line).
+	-- Backdrop peaks built from Parts (not terrain): apex at (x, top, z), one flat face turned
+	-- by `yaw` degrees (0 = facing +Z) towards the trail. All stand 600+ studs from the route.
+	Scenery = {
+		-- West (each stands 650 + 0.71 * top studs out, so its footprint stays 300+ off the trail)
+		{ x = -1080, z = -350, top = 600, yaw = 90 },
+		{ x = -1110, z = 300, top = 650, yaw = 90 },
+		{ x = -1150, z = 900, top = 700, yaw = 90 },
+		{ x = -1190, z = 1500, top = 760, yaw = 90 },
+		{ x = -1220, z = 2100, top = 800, yaw = 90 },
+		{ x = -1260, z = 2700, top = 860, yaw = 90 },
+		{ x = -1290, z = 3300, top = 900, yaw = 90 },
+		{ x = -1320, z = 3900, top = 940, yaw = 90 },
+		{ x = -1050, z = 4750, top = 950, yaw = 135 },
+		-- East
+		{ x = 1090, z = -300, top = 620, yaw = -90 },
+		{ x = 1080, z = 350, top = 600, yaw = -90 },
+		{ x = 1150, z = 950, top = 700, yaw = -90 },
+		{ x = 1190, z = 1550, top = 760, yaw = -90 },
+		{ x = 1235, z = 2150, top = 820, yaw = -90 },
+		{ x = 1260, z = 2750, top = 860, yaw = -90 },
+		{ x = 1275, z = 3350, top = 880, yaw = -90 },
+		{ x = 1300, z = 3950, top = 920, yaw = -90 },
+		{ x = 1000, z = 4800, top = 980, yaw = -135 },
+		-- South, behind Base Camp
+		{ x = -450, z = -1100, top = 600, yaw = 0 },
+		{ x = 400, z = -1150, top = 650, yaw = 0 },
+		{ x = 0, z = -1450, top = 800, yaw = 0 },
+		-- North, beyond the summit
+		{ x = 0, z = 5250, top = 1000, yaw = 180 },
+		{ x = -600, z = 5400, top = 900, yaw = 180 },
+		{ x = 600, z = 5450, top = 900, yaw = 180 },
+	},
+
+	-- Knife-edge crests under the ridge walkway (top edge `drop` studs under the route line),
+	-- each carried to the ground by a keel as wide as its 45-degree roof.
 	Crests = {
-		{ name = "CrestA", from = R0, to = R1, size = 140, drop = 4 },
-		{ name = "CrestB", from = R1, to = R2, size = 140, drop = 4 },
-		{ name = "CrestC", from = STEP, to = R3, size = 140, drop = 4 },
-		{ name = "CrestD", from = R3, to = R4, size = 140, drop = 4 },
-		{ name = "CrestE", from = R4, to = SUMMIT_EDGE, size = 140, drop = 4 },
+		{ name = "CrestA", from = R0, to = R1_IN, size = 100, drop = 4 },
+		{ name = "CrestB", from = R1_OUT, to = R2, size = 100, drop = 4 },
+		{ name = "CrestC", from = STEP, to = R3_IN, size = 100, drop = 4 },
+		{ name = "CrestD", from = R3_OUT, to = R4_IN, size = 100, drop = 4 },
+		{ name = "CrestE", from = R4_OUT, to = SUMMIT_EDGE, size = 100, drop = 4 },
 	},
 
+	-- `bottom` = how far down the Glacier body goes. Terraces are hollow underneath: each
+	-- body only reaches into the one below, and the canyon walls close the sides.
 	Slabs = {
 		-- Snow valley
-		{ name = "Valley1", from = V(0, 0, 90), to = V(40, 12, 420), width = 200 },
-		{ name = "Valley2", from = V(40, 12, 420), to = V(-40, 26, 720), width = 200 },
-		{ name = "Valley3", from = V(-40, 26, 720), to = V(-250, 40, 920), width = 160 },
+		{ name = "Valley1", from = V(0, 0, 90), to = V(40, 12, 420), width = 200, bottom = -4 },
+		{ name = "Valley2", from = V(40, 12, 420), to = V(-40, 26, 720), width = 200, bottom = -4 },
+		{ name = "Valley3", from = V(-40, 26, 720), to = V(-250, 40, 920), width = 160, bottom = -4 },
 		-- Headwall corner ramps (each climbs inside the lower bench's row)
-		{ name = "HeadRamp1", from = V(250, 40, 980), to = V(250, 80, 1080), width = 50 },
-		{ name = "HeadRamp2", from = V(-250, 80, 1140), to = V(-250, 120, 1240), width = 50 },
-		{ name = "HeadRamp3", from = V(250, 120, 1300), to = V(250, 160, 1400), width = 50 },
-		{ name = "HeadRamp4", from = V(-250, 160, 1460), to = V(-250, 200, 1560), width = 50 },
+		{ name = "HeadRamp1", from = V(250, 40, 980), to = V(250, 80, 1080), width = 50, bottom = 32 },
+		{ name = "HeadRamp2", from = V(-250, 80, 1140), to = V(-250, 120, 1240), width = 50, bottom = 72 },
+		{ name = "HeadRamp3", from = V(250, 120, 1300), to = V(250, 160, 1400), width = 50, bottom = 112 },
+		{ name = "HeadRamp4", from = V(-250, 160, 1460), to = V(-250, 200, 1560), width = 50, bottom = 152 },
 		-- Crevasse field (rises 36 over 600)
-		{ name = "Plateau", from = V(0, 200, 1700), to = V(0, 236, 2300), width = 560 },
+		{ name = "Plateau", from = V(0, 200, 1700), to = V(0, 236, 2300), width = 560, bottom = 150 },
 		-- Ice wall walk-round: a long ramp along the foot of the wall
-		{ name = "WallBypass", from = V(120, plateauY(2288), 2288), to = V(-200, 284, 2288), width = 24 },
+		{
+			name = "WallBypass",
+			from = V(120, plateauY(2288), 2288),
+			to = V(-200, 284, 2288),
+			width = 24,
+			bottom = 228,
+		},
 		-- Glacier terrace corner ramps
-		{ name = "TerraceRamp1", from = V(310, 284, 2360), to = V(310, 330, 2460), width = 50 },
-		{ name = "TerraceRamp2", from = V(-310, 330, 2520), to = V(-310, 380, 2640), width = 50 },
-		{ name = "TerraceRamp3", from = V(310, 380, 2700), to = V(310, 420, 2800), width = 50 },
-		{ name = "TerraceRamp4", from = V(-310, 420, 2860), to = V(-310, 450, 2960), width = 50 },
+		{ name = "TerraceRamp1", from = V(310, 284, 2360), to = V(310, 330, 2460), width = 50, bottom = 276 },
+		{ name = "TerraceRamp2", from = V(-310, 330, 2520), to = V(-310, 380, 2640), width = 50, bottom = 322 },
+		{ name = "TerraceRamp3", from = V(310, 380, 2700), to = V(310, 420, 2800), width = 50, bottom = 372 },
+		{ name = "TerraceRamp4", from = V(-310, 420, 2860), to = V(-310, 450, 2960), width = 50, bottom = 412 },
 		-- Ridge walkway (narrow, sits on the crests)
-		{ name = "Ridge1", from = R0, to = R1, width = 18, thickness = 24 },
-		{ name = "Ridge2", from = R1, to = R2, width = 18, thickness = 24 },
-		{ name = "Ridge3", from = STEP, to = R3, width = 18, thickness = 24 },
-		{ name = "Ridge4", from = R3, to = R4, width = 18, thickness = 24 },
-		{ name = "Ridge5", from = R4, to = SUMMIT_EDGE, width = 18, thickness = 24 },
+		{ name = "Ridge1", from = R0, to = R1_IN, width = 18, thickness = 24, extendTo = 0 },
+		{ name = "Ridge2", from = R1_OUT, to = R2, width = 18, thickness = 24, extendTo = 4 },
+		{ name = "Ridge3", from = STEP, to = R3_IN, width = 18, thickness = 24, extendTo = 0 },
+		{ name = "Ridge4", from = R3_OUT, to = R4_IN, width = 18, thickness = 24, extendTo = 0 },
+		{ name = "Ridge5", from = R4_OUT, to = SUMMIT_EDGE, width = 18, thickness = 24, extendTo = 0 },
 	},
 
 	Pads = {
 		-- Bend fillers: they plug the outer corner where two slabs meet at an angle.
-		{ name = "ValleyBend1", at = V(40, 12, 420), radius = 60, sink = 3 },
-		{ name = "ValleyBend2", at = V(-40, 26, 720), radius = 60, sink = 3 },
-		{ name = "RidgeBend1", at = R1, radius = 10, sink = 2.8, bottom = 420 },
-		{ name = "RidgeBend3", at = R3, radius = 10, sink = 3.5, bottom = 600 },
-		{ name = "RidgeBend4", at = R4, radius = 10, sink = 4.5, bottom = 660 },
-		{ name = "SummitTop", at = SUMMIT, radius = SUMMIT_RADIUS, bottom = 660 },
+		{ name = "ValleyBend1", at = V(40, 12, 420), radius = 60, sink = 3, bottom = -4 },
+		{ name = "ValleyBend2", at = V(-40, 26, 720), radius = 60, sink = 3, bottom = -4 },
+		{ name = "RidgeBend1", at = R1, radius = BEND, bottom = R1.Y - 80 },
+		{ name = "RidgeBend3", at = R3, radius = BEND, bottom = R3.Y - 80 },
+		{ name = "RidgeBend4", at = R4, radius = BEND, bottom = R4.Y - 80 },
+		{ name = "SummitTop", at = SUMMIT, radius = SUMMIT_RADIUS, bottom = 700 },
+		-- The summit block: an ice tower under the summit pad, 20 studs lower.
+		{ name = "SummitBlock", at = V(0, 780, 4160), radius = 50, bottom = 0 },
 	},
 
 	Shelves = {
 		{ name = "BaseCampFloor", min = V(-110, -20, -90), max = V(110, 0, 90) },
 		-- Headwall benches (flat, 40-stud Glacier risers between them)
 		{ name = "Bench1", min = V(-280, 0, 920), max = V(280, 40, 1080) },
-		{ name = "Bench2", min = V(-280, 0, 1080), max = V(280, 80, 1240) },
-		{ name = "Bench3", min = V(-280, 0, 1240), max = V(280, 120, 1400) },
-		{ name = "Bench4", min = V(-280, 0, 1400), max = V(280, 160, 1560) },
-		{ name = "Camp1Shelf", min = V(-280, 0, 1560), max = V(280, 200, 1700) },
+		{ name = "Bench2", min = V(-280, 28, 1080), max = V(280, 80, 1240) },
+		{ name = "Bench3", min = V(-280, 68, 1240), max = V(280, 120, 1400) },
+		{ name = "Bench4", min = V(-280, 108, 1400), max = V(280, 160, 1560) },
+		{ name = "Camp1Shelf", min = V(-280, 148, 1560), max = V(280, 200, 1700) },
 		-- Top of the ice wall (its south face at z 2300 is the wall)
-		{ name = "IceWallTop", min = V(-340, 0, 2300), max = V(340, 284, 2460) },
+		{ name = "IceWallTop", min = V(-340, 200, 2300), max = V(340, 284, 2460) },
 		-- Glacier terraces
-		{ name = "Terrace2", min = V(-340, 0, 2460), max = V(340, 330, 2640) },
-		{ name = "Terrace3", min = V(-340, 0, 2640), max = V(340, 380, 2800) },
-		{ name = "Terrace4", min = V(-340, 0, 2800), max = V(340, 420, 2960) },
-		{ name = "Camp2Shelf", min = V(-340, 0, 2960), max = V(340, 450, 3100) },
-		-- Ridge ice step
-		{ name = "RidgeStep", min = V(34, 420, 3644), max = V(86, 618, 3700) },
-		-- Canyon walls: tall Glacier cliffs along both sides of the corridor, so the route is
-		-- enclosed and never borders a slot between a shelf and a round mountain.
-		{ name = "HeadwallWallW", min = V(-360, 0, 920), max = V(-280, 230, 1700) },
-		{ name = "HeadwallWallE", min = V(280, 0, 920), max = V(360, 230, 1700) },
-		{ name = "PlateauWallW", min = V(-360, 0, 1700), max = V(-280, 280, 2300) },
-		{ name = "PlateauWallE", min = V(280, 0, 1700), max = V(360, 270, 2300) },
-		{ name = "TerraceWallW", min = V(-420, 0, 2300), max = V(-340, 490, 3100) },
-		{ name = "TerraceWallE", min = V(340, 0, 2300), max = V(420, 480, 3100) },
+		{ name = "Terrace2", min = V(-340, 272, 2460), max = V(340, 330, 2640) },
+		{ name = "Terrace3", min = V(-340, 318, 2640), max = V(340, 380, 2800) },
+		{ name = "Terrace4", min = V(-340, 368, 2800), max = V(340, 420, 2960) },
+		{ name = "Camp2Shelf", min = V(-340, 408, 2960), max = V(340, 450, 3100) },
+		{ name = "Camp2NorthWall", min = V(-340, 0, 3060), max = V(340, 450, 3100) },
+		-- Ridge ice step on its base ledge
+		{ name = "RidgeStepBase", min = V(-20, 0, 3580), max = V(140, 510, 3745) },
+		{ name = "RidgeStep", min = V(34, 500, 3644), max = V(86, 618, 3700) },
+		-- Canyon walls: Glacier cliffs along both sides of the corridor, down to the ground.
+		{ name = "HeadwallWallW", min = V(-320, 0, 920), max = V(-280, 230, 1700) },
+		{ name = "HeadwallWallE", min = V(280, 0, 920), max = V(320, 230, 1700) },
+		{ name = "PlateauWallW", min = V(-340, 0, 1700), max = V(-280, 280, 2300) },
+		{ name = "PlateauWallE", min = V(280, 0, 1700), max = V(340, 270, 2300) },
+		{ name = "TerraceWallW", min = V(-380, 0, 2300), max = V(-340, 490, 3100) },
+		{ name = "TerraceWallE", min = V(340, 0, 2300), max = V(380, 480, 3100) },
 	},
 
 	Crevasses = {
@@ -250,11 +278,15 @@ local WorldLayout = {
 		},
 	},
 
+	-- Small balls: Rock outcrops near the summit, and Glacier shoulders rounding the ridge bends.
 	Outcrops = {
-		{ x = 34, z = 4118, r = 12, top = 772 },
+		{ x = R1.X, z = R1.Z, r = 45, top = R1.Y - 4, material = "Glacier" },
+		{ x = R3.X, z = R3.Z, r = 45, top = R3.Y - 4, material = "Glacier" },
+		{ x = R4.X, z = R4.Z, r = 45, top = R4.Y - 4, material = "Glacier" },
+		{ x = 34, z = 4118, r = 12, top = 766 },
 		{ x = -30, z = 4176, r = 10, top = 786 },
 		{ x = 22, z = 4196, r = 9, top = 792 },
-		{ x = -36, z = 4060, r = 14, top = 738 },
+		{ x = -36, z = 4060, r = 14, top = 705 },
 	},
 
 	-- Camps. Passed as-is to CampKit.build(def, groundAt):
@@ -355,14 +387,20 @@ local WorldLayout = {
 		{ id = "Camp2", at = V(-200, 450, 3030) },
 		{ at = V(0, 450, 3070) },
 		{ id = "RidgeStart", at = R0 },
+		{ at = R1_IN },
 		{ id = "R1", at = R1 },
-		{ id = "NotchS", at = along(R1, R2, 0.5 - NOTCH_HALF) },
-		{ id = "NotchN", at = along(R1, R2, 0.5 + NOTCH_HALF), via = "Bridge" },
+		{ at = R1_OUT },
+		{ id = "NotchS", at = along(R1_OUT, R2, 0.5 - NOTCH_HALF) },
+		{ id = "NotchN", at = along(R1_OUT, R2, 0.5 + NOTCH_HALF), via = "Bridge" },
 		{ id = "R2", at = R2 },
 		{ id = "StepTop", at = V(60, 618, 3650), via = "Ladder" },
 		{ at = STEP },
+		{ at = R3_IN },
 		{ id = "R3", at = R3 },
+		{ at = R3_OUT },
+		{ at = R4_IN },
 		{ id = "R4", at = R4 },
+		{ at = R4_OUT },
 		{ id = "SummitEdge", at = SUMMIT_EDGE },
 		{ id = "Summit", at = SUMMIT },
 	},
@@ -450,7 +488,7 @@ local WorldLayout = {
 			name = "ValleyAvalanche",
 			zoneCenter = V(-10, 40, 470),
 			zoneSize = V(220, 90, 240),
-			releasePoints = { V(-200, 0, 400), V(-205, 0, 470), V(-200, 0, 540) },
+			releasePoints = { V(-215, 0, 420), V(-210, 0, 480), V(-215, 0, 540) },
 			pushDirection = V(1, 0, 0),
 		},
 		{

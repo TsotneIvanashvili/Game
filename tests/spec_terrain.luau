@@ -46,10 +46,38 @@ test("terrain: box ops have orthonormal right-handed axes and positive sizes", f
 	end
 end)
 
-test("terrain: fill budget (no single op over 3M voxels, total under 80M)", function()
+test("terrain: fill budget (total at most 20M voxels, no single op over 2M)", function()
 	local total, largest, name = TerrainModel.budget(ops)
-	truthy(largest <= 3e6, string.format("%s fills %.2fM voxels", name, largest / 1e6))
-	truthy(total <= 80e6, string.format("total %.1fM voxels", total / 1e6))
+	truthy(largest <= 2e6, string.format("%s fills %.2fM voxels", name, largest / 1e6))
+	truthy(total <= 20e6, string.format("total %.1fM voxels", total / 1e6))
+end)
+
+test("terrain: the Base Camp area is filled first and later fills never change it", function()
+	local seenLate = false
+	local early = {}
+	for _, op in ops do
+		if op.phase == 1 then
+			eq(seenLate, false, op.name .. " is phase 1 after a phase 2 op")
+			table.insert(early, op)
+		else
+			eq(op.phase, 2)
+			seenLate = true
+		end
+	end
+	truthy(#early > 0 and seenLate, "both phases exist")
+	local firstModel = TerrainModel.new(early)
+	local base = WorldLayout.Camps[1]
+	local fx, fz = base.footprint.X + 80, base.footprint.Z + 80
+	for i = 0, 10 do
+		for j = 0, 10 do
+			local x = base.center.X - fx / 2 + fx * i / 10
+			local z = base.center.Z - fz / 2 + fz * j / 10
+			local h1, m1 = firstModel.heightAt(x, z)
+			local h2, m2 = model.heightAt(x, z)
+			near(h1, h2, 1e-6, "base camp ground changes after phase 1 at " .. fmt(x, z))
+			eq(m1, m2)
+		end
+	end
 end)
 
 test("terrain: only snow, glacier and a little rock (no grass, mud or water)", function()
@@ -66,14 +94,15 @@ test("terrain: only snow, glacier and a little rock (no grass, mud or water)", f
 end)
 
 -- True if (x, y, z) is underground or inside some mountain ball (other than `skip`).
-local function supported(x: number, y: number, z: number, skip: number?): boolean
+-- True if (x, y, z) is underground or inside any fill other than `skip`.
+local function solidAt(x: number, y: number, z: number, skip: TerrainModel.Op?): boolean
 	if y <= WorldLayout.Ground.top then
 		return true
 	end
-	for i, m in WorldLayout.Mountains do
-		if i ~= skip then
-			local cy = m.top - m.r
-			if (x - m.x) ^ 2 + (y - cy) ^ 2 + (z - m.z) ^ 2 <= (m.r - 3) ^ 2 then
+	for _, op in ops do
+		if op ~= skip and op.mode == "Fill" then
+			local lo, hi = TerrainModel.interval(op, x, z)
+			if lo and hi and y >= lo - 0.5 and y <= hi + 0.5 then
 				return true
 			end
 		end
@@ -81,30 +110,32 @@ local function supported(x: number, y: number, z: number, skip: number?): boolea
 	return false
 end
 
-test("terrain: no floating mountains (each stands on the ground or on another)", function()
+test("terrain: no floating mountains or outcrops", function()
 	for i, m in WorldLayout.Mountains do
-		local bottom = m.top - 2 * m.r
-		truthy(
-			bottom <= WorldLayout.Ground.top or supported(m.x, bottom + 2, m.z, i),
-			string.format("mountain %d %s floats", i, fmt(m.x, m.z))
-		)
+		truthy(m.top - 2 * m.r <= WorldLayout.Ground.top, string.format("dome %d %s floats", i, fmt(m.x, m.z)))
+	end
+	for _, op in ops do
+		if string.sub(op.name, 1, 7) == "Outcrop" then
+			truthy(solidAt(op.cx, op.cy - op.radius + 1, op.cz, op), op.name .. " floats")
+		end
 	end
 end)
 
-test("terrain: ridge crest undersides rest on mountains (no visible overhangs)", function()
+test("terrain: ridge crest undersides rest on their keels (no visible overhangs)", function()
 	local exposed, total = 0, 0
 	for _, op in ops do
-		if string.sub(op.name, 1, 5) == "Crest" then
+		if string.match(op.name, "^Crest%u$") then
+			local inset = 1 - 1 / op.sx -- a hair inside the corner
 			for k = 0, 20 do
 				local t = (k / 20 - 0.5) * op.sz
 				-- The two side corners and the bottom corner of the rolled square section.
 				for _, c in { { 1, 1 }, { 1, -1 }, { -1, -1 } } do
-					local a, b = c[1] * op.sx / 2, c[2] * op.sy / 2
+					local a, b = c[1] * op.sx / 2 * inset, c[2] * op.sy / 2 * inset
 					local x = op.cx + op.rx * a + op.ux * b + op.bx * t
 					local y = op.cy + op.ry * a + op.uy * b + op.by * t
 					local z = op.cz + op.rz * a + op.uz * b + op.bz * t
 					total += 1
-					if not supported(x, y, z) then
+					if not solidAt(x, y, z, op) then
 						exposed += 1
 					end
 				end
@@ -181,10 +212,12 @@ test("terrain: the world bounds are fully covered (no void anywhere you can stan
 			truthy(h >= 0 and h > WorldLayout.SafetyNetY, "no ground at " .. fmt(x, z))
 		end
 	end
-	-- And the snow skirt reaches far past the bounds, so long sightlines end on snow.
-	local g = WorldLayout.Ground
-	truthy(g.x0 <= b.x0 - 1400 and g.x1 >= b.x1 + 1400, "skirt too narrow in X")
-	truthy(g.z0 <= b.z0 - 1200 and g.z1 >= b.z1 + 1400, "skirt too short in Z")
+	-- And the Part skirt reaches far past the terrain, so long sightlines end on snow.
+	local g, sk = WorldLayout.Ground, WorldLayout.Skirt
+	truthy(g.x0 <= b.x0 and g.x1 >= b.x1 and g.z0 <= b.z0 and g.z1 >= b.z1, "terrain ground covers the bounds")
+	truthy(sk.x0 <= b.x0 - 1400 and sk.x1 >= b.x1 + 1400, "skirt too narrow in X")
+	truthy(sk.z0 <= b.z0 - 1400 and sk.z1 >= b.z1 + 1400, "skirt too short in Z")
+	truthy(sk.top <= g.top and sk.top > g.top - g.thickness, "skirt sits just under the terrain ground top")
 	truthy(WorldLayout.SafetyFloorY < WorldLayout.SafetyNetY, "safety floor sits below the safety net")
 	truthy(g.top - g.thickness > WorldLayout.SafetyFloorY, "safety floor is under the terrain")
 end)
@@ -195,10 +228,50 @@ test("terrain: Base Camp is enclosed by high mountains on every side but the tra
 		local a = i * math.pi / 4
 		local dx, dz = math.sin(a), math.cos(a)
 		local highest = 0
-		for d = 150, 1300, 10 do
-			highest = math.max(highest, (model.heightAt(base.X + dx * d, base.Z + dz * d)))
+		for d = 150, 1600, 10 do
+			local x, z = base.X + dx * d, base.Z + dz * d
+			highest = math.max(highest, (model.heightAt(x, z)), TerrainModel.sceneryHeight(WorldLayout, x, z))
 		end
 		truthy(highest >= 200, string.format("direction %d only reaches %.0f", i, highest))
+	end
+end)
+
+test("terrain: backdrop peaks are Parts far from the trail, sized within Part limits", function()
+	truthy(#WorldLayout.Scenery >= 12, "backdrop peaks")
+	for _, p in WorldLayout.Scenery do
+		local side = TerrainModel.peakSide(p.top)
+		truthy(side <= 2048, "peak too big for one Part " .. fmt(p.x, p.z))
+		-- Ground cuts the cube above its upper corners, so no face overhangs.
+		truthy(p.top <= side / math.sqrt(3), "peak overhangs " .. fmt(p.x, p.z))
+		truthy(TerrainModel.distanceToRoute(segments, p.x, p.z) >= 600, "peak apex near the trail " .. fmt(p.x, p.z))
+		near(TerrainModel.sceneryHeight(WorldLayout, p.x, p.z), p.top, 1e-6)
+		-- Axes are orthonormal, right-handed, and sum to straight up.
+		local a = TerrainModel.peakAxes(p.yaw)
+		local sx, sy, sz = 0, 0, 0
+		for _, v in a do
+			near(v[1] ^ 2 + v[2] ^ 2 + v[3] ^ 2, 1, 1e-9)
+			sx += v[1]
+			sy += v[2]
+			sz += v[3]
+		end
+		near(sx, 0, 1e-9)
+		near(sz, 0, 1e-9)
+		near(sy, math.sqrt(3), 1e-9)
+		local c1 = a[1][2] * a[2][3] - a[1][3] * a[2][2]
+		local c2 = a[1][3] * a[2][1] - a[1][1] * a[2][3]
+		local c3 = a[1][1] * a[2][2] - a[1][2] * a[2][1]
+		near(c1 * a[3][1] + c2 * a[3][2] + c3 * a[3][3], 1, 1e-9, "right-handed")
+	end
+	-- Their footprints stay well clear of every walked segment.
+	for _, s in segments do
+		local n = math.max(1, math.floor(TerrainModel.segmentLength(s) / 40))
+		for k = 0, n do
+			local x, z = lerp(s.ax, s.bx, k / n), lerp(s.az, s.bz, k / n)
+			for a = 0, 330, 30 do
+				local px, pz = x + math.sin(math.rad(a)) * 300, z + math.cos(math.rad(a)) * 300
+				eq(TerrainModel.sceneryHeight(WorldLayout, px, pz), -math.huge, "peak within 300 of " .. fmt(x, z))
+			end
+		end
 	end
 end)
 
@@ -313,6 +386,24 @@ test("terrain: every walked segment follows the surface with no step above jump 
 			truthy(grade <= TerrainModel.STEEP_ANGLE, string.format("segment %d grade %.1f", i, grade))
 		end
 	end
+end)
+
+test("terrain: every walked segment (main and walk-rounds) is 35 degrees or gentler", function()
+	-- Humanoid.MaxSlopeAngle is 42: anything steeper must be a ladder or a bridge.
+	local worst, at = 0, ""
+	for i, s in segments do
+		if s.via == "Walk" then
+			local n = math.max(1, math.floor(TerrainModel.segmentLength(s) / 2))
+			for k = 0, n do
+				local x, z = lerp(s.ax, s.bx, k / n), lerp(s.az, s.bz, k / n)
+				local slope = model.slopeAt(x, z)
+				if slope > worst then
+					worst, at = slope, string.format("segment %d (%s) at %s", i, s.route, fmt(x, z))
+				end
+			end
+		end
+	end
+	truthy(worst <= 35, string.format("%.1f degrees at %s", worst, at))
 end)
 
 test("terrain: route segments are only walked, bridged or laddered", function()

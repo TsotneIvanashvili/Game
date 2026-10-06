@@ -61,6 +61,7 @@ export type Op = {
 	minZ: number,
 	maxZ: number,
 	voxels: number, -- 4x4x4 voxels touched, for the fill budget
+	phase: number, -- 1 = built first (Base Camp area), 2 = everything else
 }
 
 export type Model = {
@@ -131,6 +132,7 @@ local function blank(name: string, shape: string, mode: string, material: string
 		minZ = 0,
 		maxZ = 0,
 		voxels = 0,
+		phase = 2,
 	}
 end
 
@@ -180,7 +182,8 @@ local function frameAlong(
 end
 
 -- A box whose TOP face runs along the line from -> to (lowered by `sink`), `width` wide and
--- `thickness` deep, overrunning both ends by `extend`.
+-- `thickness` deep, overrunning the `from` end by `extend` and the `to` end by `extendTo`
+-- (default: the same).
 function TerrainModel.slabOp(
 	name: string,
 	mode: string,
@@ -190,16 +193,20 @@ function TerrainModel.slabOp(
 	width: number,
 	thickness: number,
 	extend: number?,
-	sink: number?
+	sink: number?,
+	extendTo: number?
 ): Op
 	local rx, ry, rz, ux, uy, uz, bx, by, bz, length = frameAlong(from, to)
 	local op = blank(name, "Box", mode, material)
 	op.rx, op.ry, op.rz, op.ux, op.uy, op.uz, op.bx, op.by, op.bz = rx, ry, rz, ux, uy, uz, bx, by, bz
 	local down = thickness / 2 + (sink or 0)
-	op.cx = (from.X + to.X) / 2 - ux * down
-	op.cy = (from.Y + to.Y) / 2 - uy * down
-	op.cz = (from.Z + to.Z) / 2 - uz * down
-	op.sx, op.sy, op.sz = width, thickness, length + 2 * (extend or TerrainModel.EXTEND)
+	local e0 = extend or TerrainModel.EXTEND
+	local e1 = extendTo or e0
+	local shift = (e1 - e0) / 2 -- along the look vector (-back)
+	op.cx = (from.X + to.X) / 2 - ux * down - bx * shift
+	op.cy = (from.Y + to.Y) / 2 - uy * down - by * shift
+	op.cz = (from.Z + to.Z) / 2 - uz * down - bz * shift
+	op.sx, op.sy, op.sz = width, thickness, length + e0 + e1
 	return finishBox(op)
 end
 
@@ -416,8 +423,13 @@ local function addRouteSlab(ops: { Op }, def: any)
 		thickness = (math.max(from.Y, to.Y) - bottomOf(def)) / uy
 	end
 	local snow = TerrainModel.SNOW_DEPTH
-	table.insert(ops, TerrainModel.slabOp(def.name, "Fill", "Glacier", from, to, def.width, thickness))
-	table.insert(ops, TerrainModel.slabOp(def.name .. "Snow", "Fill", def.top or "Snow", from, to, def.width, snow))
+	-- `extendTo = 0` stops an upward slab exactly at a flat landing (no lip poking above it).
+	local e0, e1 = def.extendFrom, def.extendTo
+	table.insert(ops, TerrainModel.slabOp(def.name, "Fill", "Glacier", from, to, def.width, thickness, e0, nil, e1))
+	table.insert(
+		ops,
+		TerrainModel.slabOp(def.name .. "Snow", "Fill", def.top or "Snow", from, to, def.width, snow, e0, nil, e1)
+	)
 end
 
 local function addMountain(ops: { Op }, def: any, index: number)
@@ -481,11 +493,29 @@ function TerrainModel.ops(layout: any): { Op }
 		addMountain(ops, def, i)
 	end
 
+	-- Crests: a 45-degree roof under the ridge walkway, carried down to the ground by a
+	-- vertical-sided keel exactly as wide as the roof (so the roof never overhangs), with a
+	-- round keel pillar at each bend.
 	for i, def in layout.Crests or {} do
-		table.insert(
-			ops,
-			TerrainModel.crestOp(def.name or ("Crest" .. i), "Glacier", def.from, def.to, def.size, def.drop)
-		)
+		local name = def.name or ("Crest" .. i)
+		table.insert(ops, TerrainModel.crestOp(name, "Glacier", def.from, def.to, def.size, def.drop))
+		if def.keel ~= false then
+			local half = def.size * SQRT_HALF -- the roof's half width
+			-- Keel top: parallel to the roof, just inside its side corners. Offset along the
+			-- crest's own up axis so the keel's ends line up with the roof's (leaning) ends.
+			local depth = def.drop + half - 2
+			local _, _, _, ux, uy, uz = frameAlong(def.from, def.to)
+			local from = { X = def.from.X - ux * depth, Y = def.from.Y - uy * depth, Z = def.from.Z - uz * depth }
+			local to = { X = def.to.X - ux * depth, Y = def.to.Y - uy * depth, Z = def.to.Z - uz * depth }
+			local bottom = layout.Ground and layout.Ground.top or 0
+			local thickness = (math.max(from.Y, to.Y) - bottom) / uy
+			table.insert(ops, TerrainModel.slabOp(name .. "Keel", "Fill", "Glacier", from, to, half * 2, thickness))
+			local top = def.to.Y - def.drop - half + 2
+			table.insert(
+				ops,
+				TerrainModel.cylinderOp(name .. "Pillar", "Fill", "Glacier", def.to.X, def.to.Z, half, bottom, top)
+			)
+		end
 	end
 
 	for _, def in layout.Slabs or {} do
@@ -585,6 +615,24 @@ function TerrainModel.ops(layout: any): { Op }
 		)
 	end
 
+	-- Build phases: everything touching the Base Camp area is filled first so players can
+	-- spawn there early. The order is the model's order too, so the two always agree.
+	local first = layout.FirstBuild
+	if first then
+		local early, late = {}, {}
+		for _, op in ops do
+			if op.maxX >= first.x0 and op.minX <= first.x1 and op.maxZ >= first.z0 and op.minZ <= first.z1 then
+				op.phase = 1
+				table.insert(early, op)
+			else
+				table.insert(late, op)
+			end
+		end
+		ops = early
+		for _, op in late do
+			table.insert(ops, op)
+		end
+	end
 	return ops
 end
 
@@ -598,6 +646,60 @@ function TerrainModel.budget(ops: { Op }): (number, number, string)
 		end
 	end
 	return total, largest, largestName
+end
+
+-- Scenery peaks -----------------------------------------------------------------------------
+-- Far backdrop mountains are Parts, not terrain: a cube standing on one corner reads as a
+-- three-faced pyramid peak (faces at 54.7 degrees, i.e. Glacier-steep). The cube is sized so
+-- the ground cuts it above its upper three corners: no face ever overhangs.
+
+local INV_SQRT3 = 1 / math.sqrt(3)
+local SQRT_TWO_THIRDS = math.sqrt(2 / 3)
+
+-- Horizontal unit directions of the three upper faces' outward normals.
+local function peakDirs(yawDegrees: number): { { number } }
+	local out = {}
+	for i = 0, 2 do
+		local a = math.rad(yawDegrees + i * 120)
+		table.insert(out, { math.sin(a), math.cos(a) })
+	end
+	return out
+end
+
+-- Cube side for a peak `top` studs above the ground (upper corners stay below ground).
+function TerrainModel.peakSide(top: number): number
+	return top * math.sqrt(3) + 40
+end
+
+-- Unit cube axes (a1, a2, a3), right-handed, with a1 + a2 + a3 pointing straight up.
+function TerrainModel.peakAxes(yawDegrees: number): { { number } }
+	local axes = {}
+	for _, d in peakDirs(yawDegrees) do
+		table.insert(axes, { d[1] * SQRT_TWO_THIRDS, INV_SQRT3, d[2] * SQRT_TWO_THIRDS })
+	end
+	local a, b, c = axes[1], axes[2], axes[3]
+	local cx, cy, cz = cross(a[1], a[2], a[3], b[1], b[2], b[3])
+	if cx * c[1] + cy * c[2] + cz * c[3] < 0 then
+		axes[1], axes[2] = b, a
+	end
+	return axes
+end
+
+-- Height of the scenery peaks at (x, z) (-math.huge where there are none).
+function TerrainModel.sceneryHeight(layout: any, x: number, z: number): number
+	local best = -math.huge
+	for _, p in layout.Scenery or {} do
+		local dx, dz = x - p.x, z - p.z
+		local reach = -math.huge
+		for _, d in peakDirs(p.yaw or 0) do
+			reach = math.max(reach, dx * d[1] + dz * d[2])
+		end
+		local h = p.top - math.sqrt(2) * reach
+		if h >= 0 then
+			best = math.max(best, h)
+		end
+	end
+	return best
 end
 
 -- Routes -------------------------------------------------------------------------------------

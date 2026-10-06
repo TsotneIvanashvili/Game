@@ -109,12 +109,15 @@ local function applyOp(op: TerrainModel.Op)
 	end
 end
 
--- Fills every op in order. Yields a frame now and then so a long fill never trips the
--- script timeout. Returns the number of ops that failed.
-local function buildTerrain(ops: { TerrainModel.Op }): number
+-- Fills the ops of one build phase, in order. Yields a frame now and then so a long fill
+-- never trips the script timeout. Returns the number of ops that failed.
+local function buildTerrain(ops: { TerrainModel.Op }, phase: number): number
 	local failed = 0
 	local sliceStart = os.clock()
 	for _, op in ops do
+		if op.phase ~= phase then
+			continue
+		end
 		local ok, err = pcall(applyOp, op)
 		if not ok then
 			failed += 1
@@ -130,6 +133,74 @@ local function buildTerrain(ops: { TerrainModel.Op }): number
 	terrain:SetMaterialColor(Enum.Material.Rock, Color3.fromRGB(104, 104, 112))
 	terrain:SetMaterialColor(Enum.Material.Slate, Color3.fromRGB(92, 92, 100))
 	return failed
+end
+
+local function setMaterial(part: BasePart, name: string, fallback: Enum.Material)
+	local ok = pcall(function()
+		part.Material = (Enum.Material :: any)[name]
+	end)
+	if not ok then
+		part.Material = fallback
+	end
+end
+
+-- The snow skirt: flat Snow Parts just under the terrain ground top, reaching far beyond the
+-- terrain so every long sightline ends on snow. Walkable (a player who wanders off the
+-- terrain still has ground under their feet).
+local function buildSkirt()
+	local sk = WorldLayout.Skirt
+	local tile = 2048
+	local x = sk.x0
+	while x < sk.x1 do
+		local z = sk.z0
+		while z < sk.z1 do
+			local w, d = math.min(tile, sk.x1 - x), math.min(tile, sk.z1 - z)
+			local p = Instance.new("Part")
+			p.Name = "SnowSkirt"
+			p.Anchored = true
+			p.CanCollide = true
+			p.CanQuery = true
+			p.CanTouch = false
+			p.CastShadow = false
+			p.Color = SNOW_COLOR
+			setMaterial(p, "Snow", Enum.Material.SmoothPlastic)
+			p.Size = Vector3.new(w, 4, d)
+			p.CFrame = CFrame.new(x + w / 2, sk.top - 2, z + d / 2)
+			p.Parent = mountain
+			z += tile
+		end
+		x += tile
+	end
+end
+
+-- Backdrop peaks: a Glacier-coloured cube standing on one corner (a three-faced pyramid above
+-- the ground) with a smaller Snow cube on its tip as the snow cap. Pure scenery.
+local function buildScenery()
+	local scenery = folder("Scenery")
+	local up = Vector3.new(0, 1, 0)
+	for i, p in WorldLayout.Scenery do
+		local axes = TerrainModel.peakAxes(p.yaw or 0)
+		local a1 = Vector3.new(axes[1][1], axes[1][2], axes[1][3])
+		local a2 = Vector3.new(axes[2][1], axes[2][2], axes[2][3])
+		local a3 = Vector3.new(axes[3][1], axes[3][2], axes[3][3])
+		local apex = Vector3.new(p.x, WorldLayout.Ground.top + p.top, p.z)
+		local function cube(name: string, side: number, tip: Vector3, color: Color3, material: string)
+			local part = Instance.new("Part")
+			part.Name = name
+			part.Anchored = true
+			part.CanCollide = false
+			part.CanQuery = false
+			part.CanTouch = false
+			part.CastShadow = false
+			part.Color = color
+			setMaterial(part, material, Enum.Material.SmoothPlastic)
+			part.Size = Vector3.new(side, side, side)
+			part.CFrame = CFrame.fromMatrix(tip - up * (side * math.sqrt(3) / 2), a1, a2, a3)
+			part.Parent = scenery
+		end
+		cube("Peak" .. i, TerrainModel.peakSide(p.top), apex, GLACIER_COLOR, "Glacier")
+		cube("PeakSnow" .. i, p.top * 0.52, apex + up, SNOW_COLOR, "Snow")
+	end
 end
 
 -- Invisible catch floor tiles far below the terrain (parts max out at 2048 studs per axis).
@@ -599,11 +670,7 @@ local function step(name: string, fn: () -> ())
 	end
 end
 
-function WorldBuilder.build(): boolean
-	if workspace:FindFirstChild("Mountain") then
-		return false -- a hand-built map is present
-	end
-	local started = os.clock()
+local function buildAll(started: number)
 	mountain = Instance.new("Model")
 	mountain.Name = "Mountain"
 	mountain.Parent = workspace
@@ -612,14 +679,21 @@ function WorldBuilder.build(): boolean
 	model = TerrainModel.new(ops)
 	segments = TerrainModel.segments(WorldLayout)
 
-	local failed = buildTerrain(ops)
+	-- Phase 1: the Base Camp basin and its surroundings, then the camps, then the rest.
+	local failed = buildTerrain(ops, 1)
 	buildSafetyFloor()
+	step("skirt", buildSkirt)
+	step("scenery", buildScenery)
 	-- Let the engine settle the new voxels before anything else touches the terrain.
 	for _ = 1, 3 do
 		RunService.Heartbeat:Wait()
 	end
-
 	step("camps", buildCamps)
+	failed += buildTerrain(ops, 2)
+	for _ = 1, 3 do
+		RunService.Heartbeat:Wait()
+	end
+
 	step("trees", scatterTrees)
 	step("rocks", scatterRocks)
 	step("wood", buildWood)
@@ -653,6 +727,21 @@ function WorldBuilder.build(): boolean
 			os.clock() - started
 		)
 	)
+end
+
+-- Builds the world (unless a hand-built Workspace.Mountain exists) and then, no matter what,
+-- sets workspace attribute WorldReady = true: character spawning waits for it.
+function WorldBuilder.build(): boolean
+	if workspace:FindFirstChild("Mountain") then
+		workspace:SetAttribute("WorldReady", true)
+		return false -- a hand-built map is present
+	end
+	local started = os.clock()
+	local ok, err = pcall(buildAll, started)
+	if not ok then
+		warn("[World] build failed: " .. tostring(err))
+	end
+	workspace:SetAttribute("WorldReady", true)
 	return true
 end
 
