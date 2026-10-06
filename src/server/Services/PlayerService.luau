@@ -36,10 +36,15 @@ local function onCharacter(player: Player, character: Model)
 	-- Roblox inserts a default "Health" Script that regenerates 1% MaxHealth/s regardless of
 	-- game state. Health is owned by SurvivalService (fed/watered regen, cold damage, downed
 	-- at 1 HP), so remove the engine regen or it silently undoes all of that.
-	local regen = character:FindFirstChild("Health")
-	if regen and regen:IsA("Script") then
-		regen:Destroy()
+	local function removeRegen(child: Instance)
+		if child.Name == "Health" and child:IsA("Script") then
+			task.defer(child.Destroy, child) -- deferred: destroying inside ChildAdded warns
+		end
 	end
+	for _, child in character:GetChildren() do
+		removeRegen(child)
+	end
+	character.ChildAdded:Connect(removeRegen)
 
 	local record = PlayerStore.get(player)
 	if record then
@@ -59,7 +64,13 @@ local function onCharacter(player: Player, character: Model)
 			if spawn then
 				task.defer(function()
 					if character.Parent then
+						-- With StreamingEnabled the camp's terrain may not be loaded for this client
+						-- yet; request it first so the character doesn't fall through.
+						pcall(function()
+							player:RequestStreamAroundAsync(spawn.Position, 5)
+						end)
 						character:PivotTo(spawn + Vector3.new(math.random(-4, 4), 0, math.random(-4, 4)))
+						PlayerStore.teleported(record)
 					end
 				end)
 			end
@@ -70,8 +81,14 @@ local function onCharacter(player: Player, character: Model)
 		-- Deaths bypassing the downed system (e.g. exploits, engine kill planes) just respawn.
 		-- Drop any carry (either side) and the downed prompts now, not at respawn: otherwise a
 		-- carrier holds a corpse (or a carried player stays welded) for RespawnTime.
-		Registry.get("RescueService").resetCharacter(player)
 		local r = PlayerStore.get(player)
+		if r and r.downed then
+			-- A death that slips past the downed state (reset, kill plane) must not be a free
+			-- escape from the evacuation penalty: the pack still stays where you fell.
+			task.spawn(Registry.get("RescueService").evacuate, player)
+			return
+		end
+		Registry.get("RescueService").resetCharacter(player)
 		if r then
 			r.downed = false
 			player:SetAttribute("Downed", false)

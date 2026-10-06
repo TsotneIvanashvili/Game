@@ -57,7 +57,7 @@ local list: { Recipe } = {
 		description = "A-frame tarp on two poles and a ridge line. Blocks most wind and all snow.",
 		cost = { wood = 4, rope = 2, tarp = 1 },
 		footprint = Vector3.new(10, 7, 12),
-		maxSlope = 18,
+		maxSlope = 22, -- must fit the safe ramp (~18.4 deg): that's where storms catch people
 		unlockedByDefault = true,
 		implemented = true,
 		buildSeconds = 6,

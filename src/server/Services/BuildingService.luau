@@ -14,6 +14,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local GameConfig = require(Shared.Config.GameConfig)
 local RecipeDefs = require(Shared.Config.RecipeDefs)
+local ZoneDefs = require(Shared.Config.ZoneDefs)
 local WarmthModel = require(Shared.Logic.WarmthModel)
 local Registry = require(script.Parent.Parent.Registry)
 local PlayerStore = require(script.Parent.Parent.PlayerStore)
@@ -183,7 +184,8 @@ function BuildingService.attachFirePrompts(s: Structure)
 		local boiled = InventoryService.boilContainers(player)
 		local melted = 0
 		local weather = Registry.get("WeatherService").sampleAt(s.position)
-		if weather.isSnow then
+		-- Snow lying on the ground (snowline and above) or falling right now can be melted.
+		if weather.isSnow or ZoneDefs.at(s.position.Y).snowCover then
 			melted = InventoryService.fillContainers(player, true, true)
 			if not s.permanent and melted > 0 then
 				s.fuel = math.max(1, (s.fuel :: number) - melted * 15) -- melting snow eats fuel

@@ -54,6 +54,11 @@ export type Record = {
 	stats: ExpeditionStats,
 	lastPosition: Vector3?,
 	lostSince: number?,
+
+	-- Movement sanity (anti speed-hack / fly-hack).
+	lastGoodPosition: Vector3?,
+	speedViolation: number,
+	groundY: number?,
 }
 
 local PlayerStore = {}
@@ -99,6 +104,9 @@ function PlayerStore.create(player: Player): Record
 		},
 		lastPosition = nil,
 		lostSince = nil,
+		lastGoodPosition = nil,
+		speedViolation = 0,
+		groundY = nil,
 	}
 	records[player] = record
 	return record
@@ -107,6 +115,16 @@ end
 -- Re-attach a stashed record (disconnect/rejoin within the grace window).
 function PlayerStore.restore(player: Player, record: Record)
 	records[player] = record
+end
+
+-- Call after any server-side teleport so movement checks and fall tracking start fresh
+-- instead of reading the jump as a speed hack or a fall.
+function PlayerStore.teleported(record: Record)
+	record.lastPosition = nil
+	record.lastGoodPosition = nil
+	record.speedViolation = 0
+	record.groundY = nil
+	record.peakY = nil
 end
 
 function PlayerStore.get(player: Player): Record?

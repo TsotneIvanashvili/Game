@@ -103,7 +103,9 @@ end
 
 local function recycle(part: BasePart)
 	part.Anchored = true
-	part.Parent = storage
+	-- Out of the world. `storage` lives in Workspace, so pooled boulders parented there stayed
+	-- visible and collidable where they stopped (an invisible-rockfall's worth of obstacles).
+	part.Parent = nil
 	hitCooldown[part] = nil
 	if #pool < POOL_SIZE then
 		table.insert(pool, part)
@@ -258,7 +260,7 @@ end
 
 -- Test hook (Studio command bar): require(...).forceRockfall()
 function DisasterService.forceRockfall()
-	if zones[1] then
+	if zones[1] and #zones[1].releases > 0 and not zones[1].active then
 		trigger(zones[1])
 	end
 end

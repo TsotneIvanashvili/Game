@@ -69,7 +69,11 @@ function CampService.recoverToCheckpoint(player: Player, message: string?)
 		record.climbing = nil
 		record.peakY = nil
 		record.lastPosition = nil
+		pcall(function()
+			player:RequestStreamAroundAsync(spawn.Position, 5)
+		end)
 		character:PivotTo(spawn + Vector3.new(math.random(-3, 3), 3, math.random(-3, 3)))
+		PlayerStore.teleported(record)
 	end
 	if message then
 		remote().notify(player, message, "warn")
@@ -88,7 +92,14 @@ local function signLogbook(player: Player, camp: Camp)
 	player:SetAttribute("Checkpoint", record.checkpoint)
 	player:SetAttribute("CheckpointName", camps[record.checkpoint].name)
 	if not isNew then
-		remote().notify(player, "You signed the " .. camp.name .. " logbook. You'll return here if evacuated.", "info")
+		-- Respawn camp only moves up, so only promise a return here when it really is the one.
+		remote().notify(
+			player,
+			if camp.index == record.checkpoint
+				then "You signed the " .. camp.name .. " logbook. You'll return here if evacuated."
+				else "You signed the " .. camp.name .. " logbook.",
+			"info"
+		)
 		return
 	end
 	record.stats.highestCheckpoint = camp.index
@@ -107,7 +118,13 @@ local function setupCamp(model: Instance)
 		return
 	end
 	setUp[model] = true
-	local index = model:GetAttribute("Index") :: number
+	local index = model:GetAttribute("Index")
+	if typeof(index) ~= "number" then
+		-- A hand-built camp without Index would make `camps[nil] = ...` throw inside
+		-- CampService.Start, aborting the bootstrap for every service after it.
+		warn("[CampService] Camp " .. model:GetFullName() .. " has no numeric Index attribute; skipped.")
+		return
+	end
 	local spawnPart = model:FindFirstChild("Spawn") :: BasePart?
 	local camp: Camp = {
 		model = model,

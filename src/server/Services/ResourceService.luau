@@ -6,6 +6,7 @@
 -- Every grant goes through InventoryService.add, which enforces slots and the weight cap.
 
 local CollectionService = game:GetService("CollectionService")
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -178,7 +179,15 @@ function ResourceService.spawnContainer(
 	local big = owner ~= nil or #valid > 2
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { groundFolder }
+	-- Exclude characters too: the ray starts above the dropper's root, so it used to land on
+	-- their own head/arm and leave the (anchored) bundle floating in mid-air.
+	local exclude: { Instance } = { groundFolder }
+	for _, p in Players:GetPlayers() do
+		if p.Character then
+			table.insert(exclude, p.Character)
+		end
+	end
+	params.FilterDescendantsInstances = exclude
 	local hit = workspace:Raycast(position + Vector3.new(0, 4, 0), Vector3.new(0, -30, 0), params)
 	local ground = if hit then hit.Position else position
 	local model = AssetFactory.groundBundle(CFrame.new(ground) * CFrame.Angles(0, math.random() * math.pi * 2, 0), big)
@@ -214,7 +223,7 @@ function ResourceService.spawnContainer(
 		InventoryService.sync(player)
 		if #valid == 0 then
 			model:Destroy()
-			if owner and owner ~= player.Name then
+			if owner and owner ~= player.DisplayName then -- owner is a DisplayName
 				remote().notify(player, "You recovered " .. owner .. "'s gear.", "good")
 			end
 		elseif not tookAny then

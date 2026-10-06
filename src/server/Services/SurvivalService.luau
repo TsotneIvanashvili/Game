@@ -30,6 +30,9 @@ local raycastParams = RaycastParams.new()
 raycastParams.FilterType = Enum.RaycastFilterType.Exclude
 raycastParams.IgnoreWater = false
 
+-- Accumulated excess movement (studs) before a player is snapped back.
+local MOVEMENT_TOLERANCE_STUDS = 25
+
 local COLD_WARNINGS = {
 	Mild = nil,
 	Moderate = "You're getting cold.",
@@ -206,7 +209,7 @@ end
 local function tickPlayer(
 	player: Player,
 	record: PlayerStore.Record,
-	_character: Model,
+	character: Model,
 	humanoid: Humanoid,
 	root: BasePart,
 	dt: number
@@ -353,12 +356,45 @@ local function tickPlayer(
 		Registry.get("ClimbingService").tick(player, record, root, dt)
 	end
 
+	-- Movement sanity. WalkSpeed/JumpHeight are applied by the client that owns the character,
+	-- so an exploiter can raise them locally; the server compares actual displacement with what
+	-- the server-set values allow. Short bursts (knockback, jumping off a wall) are tolerated by
+	-- accumulating the excess; a sustained excess snaps the player back to their last good spot.
+	if not record.carriedBy and not record.climbing and record.lastPosition then
+		local last = record.lastPosition :: Vector3
+		local step = Vector3.new(pos.X - last.X, 0, pos.Z - last.Z).Magnitude
+		local allowed = humanoid.WalkSpeed * dt * 1.5 + 1.5
+		local excess = math.max(0, step - allowed)
+		if record.groundY and pos.Y > record.groundY + GameConfig.JUMP_HEIGHT + 8 then
+			excess += pos.Y - (record.groundY + GameConfig.JUMP_HEIGHT + 8) -- rising with nothing to stand on
+		end
+		if excess > 0 then
+			record.speedViolation += excess
+		else
+			record.speedViolation = math.max(0, record.speedViolation - 2 * dt)
+		end
+		if record.speedViolation > MOVEMENT_TOLERANCE_STUDS and record.lastGoodPosition then
+			warn(string.format("[SurvivalService] %s moved implausibly fast; snapping back", player.Name))
+			record.speedViolation = 0
+			record.peakY = nil
+			root.AssemblyLinearVelocity = Vector3.zero
+			character:PivotTo(CFrame.new(record.lastGoodPosition :: Vector3) * root.CFrame.Rotation)
+			record.lastPosition = nil
+			return
+		end
+	end
+
 	-- Fall tracking.
 	if record.climbing or record.carriedBy then
 		record.peakY = nil
+		record.groundY = pos.Y
 	else
 		local grounded = isGrounded(root, humanoid)
 		if grounded then
+			record.groundY = pos.Y
+			if record.speedViolation <= 0 then
+				record.lastGoodPosition = pos
+			end
 			if record.peakY then
 				local drop = record.peakY - pos.Y
 				record.peakY = nil
@@ -465,18 +501,18 @@ function SurvivalService.Init()
 end
 
 function SurvivalService.Start()
-	Players.PlayerAdded:Connect(function(player)
+	-- Same hooks for players already present at Start (previously they missed CharacterRemoving).
+	local function watch(player: Player)
 		player.CharacterAdded:Connect(function()
 			task.defer(refreshCharacterFilter)
 		end)
 		player.CharacterRemoving:Connect(function()
 			task.defer(refreshCharacterFilter)
 		end)
-	end)
+	end
+	Players.PlayerAdded:Connect(watch)
 	for _, player in Players:GetPlayers() do
-		player.CharacterAdded:Connect(function()
-			task.defer(refreshCharacterFilter)
-		end)
+		watch(player)
 	end
 	Players.PlayerRemoving:Connect(function(player)
 		gearCache[player] = nil

@@ -54,10 +54,14 @@ type Session = {
 	readOnly: boolean,
 	dirty: boolean,
 	saving: boolean,
+	released: boolean, -- a lock-releasing (final) save has started
 }
 
 local store: DataStore? = nil
 local sessions: { [Player]: Session } = {}
+local loading: { [Player]: boolean } = {}
+-- userId -> number of final (lock-releasing) saves still in flight for a session that left.
+local releasing: { [number]: number } = {}
 
 DataService.ProfileLoaded = Signal.new() -- (player, profile, readOnly)
 
@@ -175,6 +179,7 @@ local function load(player: Player): (Profile, boolean)
 		local ok, stored = retry("load " .. player.Name, function()
 			return (store :: DataStore):UpdateAsync(keyFor(player), function(old)
 				local now = os.time()
+				lockedElsewhere = false -- the transform can run more than once; judge the latest `old`
 				if typeof(old) == "table" and typeof(old.lock) == "table" then
 					local lock = old.lock
 					if
@@ -206,6 +211,24 @@ local function load(player: Player): (Profile, boolean)
 	return defaultProfile(), true
 end
 
+-- Clears our session lock without writing profile data. Used when a player leaves while
+-- their load is still in flight (the load took the lock, but no session exists to save).
+local function releaseLock(player: Player)
+	if not store then
+		return
+	end
+	local jobId = if game.JobId ~= "" then game.JobId else "studio"
+	retry("unlock " .. player.Name, function()
+		return (store :: DataStore):UpdateAsync(keyFor(player), function(old)
+			if typeof(old) == "table" and typeof(old.lock) == "table" and old.lock.jobId == jobId then
+				old.lock = nil
+				return old
+			end
+			return nil -- not our lock (or no lock): leave it alone
+		end)
+	end)
+end
+
 local function save(player: Player, release: boolean): boolean
 	local session = sessions[player]
 	if not session or session.readOnly or not store then
@@ -215,6 +238,9 @@ local function save(player: Player, release: boolean): boolean
 		return true -- an autosave is in flight; the next one will pick up changes
 	end
 	session.saving = true
+	if release then
+		session.released = true
+	end
 	local jobId = if game.JobId ~= "" then game.JobId else "studio"
 	-- Deep copy: UpdateAsync may run the transform later, and gameplay keeps mutating the live table.
 	local snapshot = deepCopy(session.data)
@@ -223,6 +249,12 @@ local function save(player: Player, release: boolean): boolean
 			local data = if typeof(old) == "table" then old else {}
 			-- If another server stole our lock (we were presumed dead), don't clobber it.
 			if typeof(data.lock) == "table" and data.lock.jobId ~= jobId then
+				return nil
+			end
+			-- An autosave that was still in flight when the player left must not land after the
+			-- final save: it would re-take the lock (locking the player out of other servers)
+			-- and write an older snapshot over the final one.
+			if not release and session.released then
 				return nil
 			end
 			data.profile = snapshot
@@ -265,12 +297,21 @@ function DataService.Start()
 		DataService.loadPlayer(player)
 	end)
 	for _, player in Players:GetPlayers() do
-		task.spawn(DataService.loadPlayer, player)
+		-- Deferred, not spawned: with no DataStore (Studio) load() never yields, so a spawned
+		-- load would fire ProfileLoaded right now, before ProgressionService/PlayerService
+		-- (which Start after us) have connected, and the player would never become ready.
+		task.defer(DataService.loadPlayer, player)
 	end
 
 	Players.PlayerRemoving:Connect(function(player)
+		local userId = player.UserId
+		releasing[userId] = (releasing[userId] or 0) + 1
 		save(player, true)
 		sessions[player] = nil
+		releasing[userId] -= 1
+		if releasing[userId] <= 0 then
+			releasing[userId] = nil
+		end
 	end)
 
 	task.spawn(function()
@@ -299,14 +340,28 @@ function DataService.Start()
 end
 
 function DataService.loadPlayer(player: Player)
-	if sessions[player] then
+	if sessions[player] or loading[player] then
 		return
+	end
+	loading[player] = true
+	-- Quick rejoin to this same server: the previous session's final save may still be in
+	-- flight. Loading now would read stale data, and that save would then clear the lock
+	-- this new session just took. Wait for it (bounded).
+	local deadline = os.clock() + 30
+	while releasing[player.UserId] and os.clock() < deadline and player.Parent do
+		task.wait(0.5)
 	end
 	local profile, readOnly = load(player)
+	loading[player] = nil
 	if not player.Parent then
+		-- Left mid-load: load() took the session lock but no session exists to release it,
+		-- which would lock the player out of every other server for LOCK_STALE_SECONDS.
+		if not readOnly and not Players:GetPlayerByUserId(player.UserId) then
+			releaseLock(player)
+		end
 		return
 	end
-	sessions[player] = { data = profile, readOnly = readOnly, dirty = false, saving = false }
+	sessions[player] = { data = profile, readOnly = readOnly, dirty = false, saving = false, released = false }
 	DataService.ProfileLoaded:Fire(player, profile, readOnly)
 end
 

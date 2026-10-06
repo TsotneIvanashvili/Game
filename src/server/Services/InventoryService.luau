@@ -107,7 +107,7 @@ function InventoryService.add(
 		return 0
 	end
 	local slots = InventoryService.packStats(record).slots
-	local fit = math.min(qty, InventoryModel.spaceFor(record.inventory, itemId, slots))
+	local fit = math.min(qty, InventoryModel.spaceFor(record.inventory, itemId, slots, data))
 	-- Reduce until the weight fits under the hard cap.
 	while fit > 0 and wouldExceedHardCap(record, InventoryModel.addedWeight(itemId, fit, data)) do
 		fit -= 1

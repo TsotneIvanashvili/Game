@@ -86,15 +86,19 @@ function InventoryModel.firstOf(inv: Inventory, itemId: string): Stack?
 end
 
 -- How many of `itemId` fit, considering partial stacks and free slots (not weight).
-function InventoryModel.spaceFor(inv: Inventory, itemId: string, slotLimit: number): number
+-- Mirrors `add`'s merge rule: only data-less stacks merge, and never when adding with data
+-- (previously partial stacks carrying data were counted as room `add` would never use).
+function InventoryModel.spaceFor(inv: Inventory, itemId: string, slotLimit: number, data: { [string]: any }?): number
 	local def = ItemDefs.ById[itemId]
 	if not def then
 		return 0
 	end
 	local space = 0
-	for _, stack in inv.stacks do
-		if stack.itemId == itemId and def.maxStack > 1 then
-			space += def.maxStack - stack.qty
+	if def.maxStack > 1 and data == nil then
+		for _, stack in inv.stacks do
+			if stack.itemId == itemId and stack.data == nil then
+				space += math.max(0, def.maxStack - stack.qty)
+			end
 		end
 	end
 	local freeSlots = math.max(0, slotLimit - #inv.stacks)

@@ -537,6 +537,19 @@ test("slot limit is respected and partial adds report the true count", function(
 	eq(InventoryModel.add(inv, "wood", 1, 2), 0)
 end)
 
+test("spaceFor matches what add can actually merge (data stacks never merge)", function()
+	local inv = InventoryModel.new()
+	-- A partial stackable stack that carries data: add() will not merge into it.
+	InventoryModel.add(inv, "energy_bar", 3, 1, { marked = true })
+	eq(InventoryModel.spaceFor(inv, "energy_bar", 1), 0, "no free slot and the only stack has data")
+	eq(InventoryModel.add(inv, "energy_bar", 1, 1), 0)
+	local inv2 = InventoryModel.new()
+	InventoryModel.add(inv2, "energy_bar", 3, 1)
+	eq(InventoryModel.spaceFor(inv2, "energy_bar", 1), 7, "plain partial stack has room")
+	eq(InventoryModel.spaceFor(inv2, "energy_bar", 1, { marked = true }), 0, "adding with data never merges")
+	eq(InventoryModel.add(inv2, "energy_bar", 1, 1, { marked = true }), 0)
+end)
+
 test("bad quantities are rejected", function()
 	local inv = InventoryModel.new()
 	eq(InventoryModel.add(inv, "wood", 0, 10), 0)

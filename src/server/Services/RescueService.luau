@@ -421,8 +421,17 @@ function RescueService.Start()
 					local target = record.carrying
 					if target then
 						local targetRecord = PlayerStore.get(target)
+						local exhausted = record.survival.stamina <= 0
+						if exhausted and not record.climbing and not record.downed then
+							remote().notify(
+								player,
+								"You're spent and have to set " .. target.DisplayName .. " down.",
+								"warn"
+							)
+						end
 						if
-							record.climbing
+							exhausted
+							or record.climbing
 							or record.downed
 							or not target.Parent
 							or not targetRecord
