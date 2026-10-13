@@ -34,7 +34,6 @@ import terrain  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
 
-TERRAIN_BOUNDS = (-840, -740, 840, 4540)  # WorldLayout.Bounds plus room for domes past the edge
 MAT_CODES = {"S": 0, "G": 1, "R": 2, "L": 3, "A": 4, "I": 5}
 MAT_NAMES = ["Snow", "Glacier", "Rock", "Slate", "Air", "Ice"]
 # Terrain material colours exactly as WorldBuilder sets them (Terrain:SetMaterialColor).
@@ -79,7 +78,7 @@ def load_scene(path: str) -> Scene:
         if k == "P":
             P.append(f)
         elif k == "TR":
-            rows[int(f[1])] = (f[2], f[3])
+            rows[int(f[1])] = (f[2], f[3], f[4] if len(f) > 4 else f[3])
         elif k == "GRID":
             s.gx0, s.gz0, s.gstep, s.gnx, s.gnz = float(f[1]), float(f[2]), float(f[3]), int(f[4]), int(f[5])
         elif k == "TXT":
@@ -116,15 +115,17 @@ def load_scene(path: str) -> Scene:
     s.anc = [f[34].split(".") for f in P]
     s.index_of = {int(f[1]): i for i, f in enumerate(P)}
     H = np.zeros((s.gnz, s.gnx), np.float32)
-    M = np.zeros((s.gnz, s.gnx), np.int8)
+    M = np.zeros((s.gnz, s.gnx), np.uint8)
+    B = np.zeros((s.gnz, s.gnx), np.uint8)
     for iz in range(s.gnz):
-        hs, ms = rows[iz]
+        hs, ms, bs = rows[iz]
         H[iz] = np.array(hs.split(","), np.float32)
         M[iz] = np.frombuffer(ms.encode(), np.uint8)
+        B[iz] = np.frombuffer(bs.encode(), np.uint8)
     lut = np.full(256, 4, np.int8)
     for c, v in MAT_CODES.items():
         lut[ord(c)] = v
-    s.H, s.M = H, lut[M.view(np.uint8)]
+    s.H, s.M, s.B = H, lut[M], lut[B]
     return s
 
 
@@ -1041,6 +1042,7 @@ def presets(s: Scene):
     wf = route["WallFoot"]
     k1 = route["K1S"]
     summit = route["Summit"]
+    t4 = route["T4"]
     # Behind the player: opposite their look vector (-sin yaw, -cos yaw).
     lx, lz = -math.sin(pyaw), -math.cos(pyaw)
     return {
@@ -1069,6 +1071,16 @@ def presets(s: Scene):
                                 shadow_dist=60, sun=(150, 45), desc="Default-loadout character from the front."),
         "character_back": dict(pos=(cx - 2.4, cy + 4.8, cz + 10.5), target=(cx, cy + 3.1, cz), fov=46, near=0.05,
                                shadow_dist=60, desc="Default-loadout character from behind (pack, harness, axe)."),
+        "valley": dict(pos=(30, 34, 90), target=(-10, 70, 700), fov=68, shadow_dist=900,
+                       desc="Leaving Base Camp: the snow valley and its peaks, looking up the route."),
+        "headwall": dict(pos=(60, 70, 780), target=(0, 140, 1250), fov=68, shadow_dist=900,
+                         desc="The Headwall switchbacks from the top of the valley."),
+        "serac_band": dict(pos=(t4[2] - 40, t4[3] + 16, t4[4] - 30), target=(t4[2] - 200, t4[3] + 60, t4[4] + 120),
+                           fov=68, shadow_dist=600, desc="The glacier switchbacks under the serac band."),
+        "summit_view": dict(pos=(summit[2] + 6, summit[3] + 8, summit[4] + 4), target=(0, 300, 2300), fov=70,
+                            shadow_dist=1500, desc="From the summit, looking back down the whole route."),
+        "vista": dict(pos=(1100, 1050, -500), target=(-80, 250, 2000), fov=55, shadow_dist=4000,
+                      desc="The whole mountain from the air, south-east of Base Camp."),
         "route_map": dict(pos=(0, 3000, 1900), target=(0, 0, 1900), map=True,
                           desc="Top-down map of the whole route with the camps marked."),
     }
@@ -1093,11 +1105,7 @@ def finalize_preset(s, name, p):
 
 def prepare(path: str, work: str) -> Scene:
     s = load_scene(path)
-    tri, n, vn, mat = terrain.cached_mesh(s.ops, TERRAIN_BOUNDS, work)
-    # The underside of the one-voxel ground sheet is never visible (the snow skirt and the
-    # safety floor are below it); dropping it halves the triangle count.
-    keep = ~((n[:, 1] < -0.3) & (tri[:, :, 1].max(1) < -1.0))
-    s.terrain = (tri[keep], n[keep], vn[keep], mat[keep])
+    s.terrain = terrain.heightfield_mesh(s.gx0, s.gz0, s.gstep, s.H, s.M, s.B)
     return s
 
 

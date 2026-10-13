@@ -1111,6 +1111,7 @@ terrain._p.FillBall = terrainCall
 terrain._p.FillCylinder = terrainCall
 terrain._p.FillWedge = terrainCall
 terrain._p.ReplaceMaterial = terrainCall
+terrain._p.WriteVoxels = terrainCall
 terrain._p.Clear = terrainCall
 Mock.materialColors = {}
 terrain._p.SetMaterialColor = function(_, material, color)

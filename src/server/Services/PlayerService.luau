@@ -24,6 +24,11 @@ local REJOIN_GRACE_SECONDS = 600
 type Stash = { at: number, record: PlayerStore.Record }
 local departed: { [number]: Stash } = {}
 
+-- onCharacter can run twice for one character (CharacterAdded, then again once the profile
+-- loads). Hooks are connected once, and the respawn placement happens once with a record.
+type CharacterState = { hooked: boolean, placed: boolean }
+local characterState: { [Model]: CharacterState } = setmetatable({}, { __mode = "k" }) :: any
+
 local function onCharacter(player: Player, character: Model)
 	local humanoid = character:WaitForChild("Humanoid", 10) :: Humanoid?
 	local root = character:WaitForChild("HumanoidRootPart", 10) :: BasePart?
@@ -41,25 +46,14 @@ local function onCharacter(player: Player, character: Model)
 		warn("[PlayerService] character for " .. player.Name .. " never entered Workspace")
 		return
 	end
-	humanoid.UseJumpPower = false
-	humanoid.JumpHeight = GameConfig.JUMP_HEIGHT
-	humanoid.WalkSpeed = GameConfig.WALK_SPEED
-	humanoid.MaxSlopeAngle = GameConfig.MAX_SLOPE_ANGLE
-	-- Roblox inserts a default "Health" Script that regenerates 1% MaxHealth/s regardless of
-	-- game state. Health is owned by SurvivalService (fed/watered regen, cold damage, downed
-	-- at 1 HP), so remove the engine regen or it silently undoes all of that.
-	local function removeRegen(child: Instance)
-		if child.Name == "Health" and child:IsA("Script") then
-			task.defer(child.Destroy, child) -- deferred: destroying inside ChildAdded warns
-		end
+	local state = characterState[character]
+	if not state then
+		state = { hooked = false, placed = false }
+		characterState[character] = state
 	end
-	for _, child in character:GetChildren() do
-		removeRegen(child)
-	end
-	character.ChildAdded:Connect(removeRegen)
-
 	local record = PlayerStore.get(player)
-	if record then
+	if record and not state.placed then
+		state.placed = true
 		-- Normally already released on CharacterRemoving/Died; this catches the first
 		-- character after a rejoin. Release properly (both sides), never just nil the fields.
 		Registry.get("RescueService").resetCharacter(player)
@@ -88,6 +82,26 @@ local function onCharacter(player: Player, character: Model)
 			end
 		end
 	end
+	if state.hooked then
+		return
+	end
+	state.hooked = true
+	humanoid.UseJumpPower = false
+	humanoid.JumpHeight = GameConfig.JUMP_HEIGHT
+	humanoid.WalkSpeed = GameConfig.WALK_SPEED
+	humanoid.MaxSlopeAngle = GameConfig.MAX_SLOPE_ANGLE
+	-- Roblox inserts a default "Health" Script that regenerates 1% MaxHealth/s regardless of
+	-- game state. Health is owned by SurvivalService (fed/watered regen, cold damage, downed
+	-- at 1 HP), so remove the engine regen or it silently undoes all of that.
+	local function removeRegen(child: Instance)
+		if child.Name == "Health" and child:IsA("Script") then
+			task.defer(child.Destroy, child) -- deferred: destroying inside ChildAdded warns
+		end
+	end
+	for _, child in character:GetChildren() do
+		removeRegen(child)
+	end
+	character.ChildAdded:Connect(removeRegen)
 
 	humanoid.Died:Connect(function()
 		-- Deaths bypassing the downed system (e.g. exploits, engine kill planes) just respawn.
@@ -108,10 +122,12 @@ local function onCharacter(player: Player, character: Model)
 	end)
 
 	Registry.get("SurvivalService").refreshCharacterFilter()
-	-- Appearance (body parts) can still be loading; build gear once it settles.
+	-- Appearance (body parts) can still be loading; build gear once it settles. Not forced:
+	-- a fresh character has no gear folder, so this builds once; the appearance-loaded
+	-- refresh below forces a rebuild because the body parts were swapped.
 	task.delay(0.5, function()
 		if character.Parent then
-			Registry.get("EquipmentService").refresh(player, true)
+			Registry.get("EquipmentService").refresh(player)
 		end
 	end)
 	if not player:HasAppearanceLoaded() then

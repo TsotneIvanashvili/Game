@@ -334,8 +334,54 @@ return function(M)
 			ReadVoxels = function()
 				error("mock: Terrain:ReadVoxels is not emulated", 2)
 			end,
-			WriteVoxels = function(self)
-				M.terrainOp(self, "WriteVoxels")
+			WriteVoxels = function(_self, region, resolution, materials, occupancy)
+				-- Validated like the engine (aligned region, 4-stud resolution, x/y/z arrays
+				-- matching the region), then only counted: the arrays are far too big to keep.
+				if M.typeof(region) ~= "Region3" then
+					error("invalid argument #1 to 'WriteVoxels' (Region3 expected, got " .. M.typeof(region) .. ")", 2)
+				end
+				if resolution ~= 4 then
+					error("WriteVoxels: resolution must be 4", 2)
+				end
+				local size = region.Size
+				local lo = region.CFrame.Position - size / 2
+				for _, v in { lo.X, lo.Y, lo.Z, size.X, size.Y, size.Z } do
+					if math.abs(v / 4 - math.floor(v / 4 + 0.5)) > 1e-6 then
+						error("WriteVoxels: region is not aligned to the voxel grid", 2)
+					end
+				end
+				local nx, ny, nz =
+					math.floor(size.X / 4 + 0.5), math.floor(size.Y / 4 + 0.5), math.floor(size.Z / 4 + 0.5)
+				if type(materials) ~= "table" or type(occupancy) ~= "table" or #materials ~= nx or #occupancy ~= nx then
+					error("WriteVoxels: materials/occupancy must be [x][y][z] arrays matching the region", 2)
+				end
+				local solid = 0
+				for x = 1, nx do
+					local mx, ox = materials[x], occupancy[x]
+					if #mx ~= ny or #ox ~= ny then
+						error("WriteVoxels: y size mismatch", 2)
+					end
+					for y = 1, ny do
+						local mz, oz = mx[y], ox[y]
+						if #mz ~= nz or #oz ~= nz then
+							error("WriteVoxels: z size mismatch", 2)
+						end
+						for z = 1, nz do
+							local o = oz[z]
+							if type(o) ~= "number" or o < 0 or o > 1 then
+								error("WriteVoxels: occupancy must be a number in [0, 1]", 2)
+							end
+							if M.typeof(mz[z]) ~= "EnumItem" then
+								error("WriteVoxels: materials must be Enum.Material", 2)
+							end
+							if o > 0 then
+								solid += 1
+							end
+						end
+					end
+				end
+				M.terrainVoxels = (M.terrainVoxels or 0) + solid
+				M.terrainOp(_self, "WriteVoxels")
 			end,
 			CellCenterToWorld = function(_, x, y, z)
 				return v3(x * 4 + 2, y * 4 + 2, z * 4 + 2)

@@ -6,21 +6,20 @@
 -- (tests/render/render.py runs this for you and splits the output into a work directory.)
 --
 -- What runs, unmodified, from src/:
---   * WorldBuilder.build(): terrain op replay (recorded only), snow skirt, backdrop peaks,
+--   * WorldBuilder.build(): terrain voxel writes (recorded only), snow skirt, backdrop peaks,
 --     CampKit.build for every WorldLayout camp, tree/rock scatter, wood, hazards, summit,
 --     RouteKit bridges / ladders / markers / signs / fences / fixed ropes.
 --   * EquipmentService.refresh() on an R15-sized dummy wearing LoadoutConfig's default
 --     loadout (worn items + default pack + StarterPack contents, set up by the real
 --     InventoryService.setupLoadout), i.e. exactly the gear a new player spawns with.
---   * TerrainModel.new(TerrainModel.ops(WorldLayout)).heightAt sampled on a 2-stud grid.
+--   * TerrainModel.new(WorldLayout): every voxel column's height, top and body material.
 --
 -- Records (first field is the record type):
 --   P     id path class shape meshType msx msy msz mox moy moz sx sy sz px py pz
 --         r00 r10 r20 r01 r11 r21 r02 r12 r22 (rotation columns: right, up, back)
 --         r g b transparency material castShadow canCollide ancestry (instance ids, "." joined)
 --   TXT   kind(surface|billboard) partId face/offset text r g b sx sy
---   GRID  x0 z0 step nx nz          then one TR record per row: TR iz heights materials
---   OP    terrain op fields (for wall materials in the renderer)
+--   GRID  x0 z0 step nx nz          then one TR record per row: TR iz heights tops bodies
 --   CAMP  id name x y z radius
 --   ROUTE route index x y z via id
 --   CHAR  name x y z yaw            (a character standing on the ground at x, y, z)
@@ -311,55 +310,25 @@ for _, d in Mock.workspace:GetDescendants() do
 end
 
 ---------------------------------------------------------------------------------------------
--- 4. Terrain: heightfield + top material from the model the builder itself uses
+-- 4. Terrain: the heightfield the builder writes, one sample per voxel column
 ---------------------------------------------------------------------------------------------
-local ops = TerrainModel.ops(WorldLayout)
-local model = TerrainModel.new(ops)
-local MAT_CODE = { Snow = "S", Glacier = "G", Rock = "R", Slate = "L", Air = "A", Ice = "I" }
-local b = WorldLayout.Bounds
-local step = 2
-local nx = math.floor((b.x1 - b.x0) / step) + 1
-local nz = math.floor((b.z1 - b.z0) / step) + 1
-emit("GRID", b.x0, b.z0, step, nx, nz)
-for iz = 0, nz - 1 do
-	local z = b.z0 + iz * step
-	local hs = table.create(nx)
-	local ms = table.create(nx)
-	for ix = 0, nx - 1 do
-		local h, m = model.heightAt(b.x0 + ix * step, z)
-		if h == -math.huge then
-			h = -999
-		end
-		hs[ix + 1] = string.format("%.2f", h)
-		ms[ix + 1] = MAT_CODE[m] or "?"
+local model = TerrainModel.new(WorldLayout)
+local MAT_CODE = { "S", "G", "R" } -- TerrainModel material codes 1..3
+local g = model.grid
+emit("GRID", g.x0 + 2, g.z0 + 2, 4, g.nx, g.nz)
+for k = 0, g.nz - 1 do
+	local hs = table.create(g.nx)
+	local tops = table.create(g.nx)
+	local bodies = table.create(g.nx)
+	for i = 0, g.nx - 1 do
+		local h, _, top, body = model.column(i, k)
+		hs[i + 1] = string.format("%.2f", h)
+		tops[i + 1] = MAT_CODE[top] or "?"
+		bodies[i + 1] = MAT_CODE[body] or "?"
 	end
-	table.insert(out, "TR\t" .. iz .. "\t" .. table.concat(hs, ",") .. "\t" .. table.concat(ms))
-end
-for _, op in ops do
-	emit(
-		"OP",
-		op.name,
-		op.shape,
-		op.mode,
-		op.material,
-		if op.source == "" then "-" else op.source,
-		op.cx,
-		op.cy,
-		op.cz,
-		op.rx,
-		op.ry,
-		op.rz,
-		op.ux,
-		op.uy,
-		op.uz,
-		op.bx,
-		op.by,
-		op.bz,
-		op.sx,
-		op.sy,
-		op.sz,
-		op.radius,
-		op.height
+	table.insert(
+		out,
+		"TR\t" .. k .. "\t" .. table.concat(hs, ",") .. "\t" .. table.concat(tops) .. "\t" .. table.concat(bodies)
 	)
 end
 

@@ -229,24 +229,11 @@ end)
 step("inject terrain surface from Shared/Logic/TerrainModel", function()
 	TerrainModel = sharedModule("Logic", "TerrainModel")
 	WorldLayout = sharedModule("Config", "WorldLayout")
-	terrainModel = TerrainModel.new(TerrainModel.ops(WorldLayout))
-	-- Material of the voxel at a point: the last operation containing it decides.
-	local ops = terrainModel.ops
+	terrainModel = TerrainModel.new(WorldLayout)
+	-- Rays that hit a cliff face report the voxel material inside it (the ice body), not the
+	-- snow on top, exactly as the voxels WorldBuilder writes.
 	local function materialAt(x: number, y: number, z: number): string
-		local material = "Air"
-		for _, op in ops do
-			if x >= op.minX and x <= op.maxX and z >= op.minZ and z <= op.maxZ then
-				local lo, hi = TerrainModel.interval(op, x, z)
-				if lo and hi and y >= lo and y <= hi then
-					if op.mode == "Carve" then
-						material = "Air"
-					elseif op.mode == "Fill" or (op.mode == "Replace" and material == op.source) then
-						material = op.material
-					end
-				end
-			end
-		end
-		return material
+		return terrainModel.voxelMaterial(x, y, z)
 	end
 	rt.setTerrainSurface(terrainModel.heightAt, terrainModel.normalAt, materialAt)
 end)

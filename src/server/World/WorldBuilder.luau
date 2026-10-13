@@ -6,9 +6,10 @@
 --   Camp, SupplyCrate, Outfitter, WoodSource, WaterSource, RockfallZone, SectionEnd
 --   (terrain Glacier/Rock is climbable by material; ladders are TrussParts, no tag needed)
 --
--- Placement never raycasts terrain: Shared/Logic/TerrainModel evaluates the same operation
--- list we fill, so heights, slopes and materials are known exactly the moment we need them
--- (raycasts against terrain written in the same frame miss; that left v1 without props).
+-- Placement never raycasts terrain: Shared/Logic/TerrainModel is the heightfield we write
+-- (WriteVoxels, chunk by chunk), so heights, slopes and materials are known exactly the
+-- moment we need them (raycasts against terrain written in the same frame miss; that left v1
+-- without props).
 -- Camps come from the CampKit module (another workstream); a minimal camp is built here if
 -- it is missing or fails, so the world always works.
 
@@ -35,6 +36,7 @@ local SNOW_COLOR = Color3.fromRGB(236, 242, 250)
 local GLACIER_COLOR = Color3.fromRGB(92, 205, 214)
 
 local counts = {
+	voxels = 0,
 	camps = 0,
 	trees = 0,
 	rocks = 0,
@@ -45,13 +47,6 @@ local counts = {
 	hazards = 0,
 	signs = 0,
 }
-
-local function materialNamed(name: string): Enum.Material
-	local ok, value = pcall(function()
-		return (Enum.Material :: any)[name]
-	end)
-	return if ok and value then value else Enum.Material.Snow
-end
 
 local function folder(name: string): Folder
 	local f = Instance.new("Folder")
@@ -76,62 +71,101 @@ end
 
 -- Terrain ---------------------------------------------------------------------------------
 
-local function boxFrame(op: TerrainModel.Op): CFrame
-	return CFrame.fromMatrix(
-		Vector3.new(op.cx, op.cy, op.cz),
-		Vector3.new(op.rx, op.ry, op.rz),
-		Vector3.new(op.ux, op.uy, op.uz),
-		Vector3.new(op.bx, op.by, op.bz)
-	)
-end
+local CHUNK = 16 -- columns per side of one WriteVoxels call (64 x 64 studs)
+local VOXEL_MATERIALS = { Enum.Material.Snow, Enum.Material.Glacier, Enum.Material.Rock }
 
-local function applyOp(op: TerrainModel.Op)
-	if op.mode == "Replace" then
-		local half = Vector3.new(op.sx, op.sy, op.sz) / 2
-		local center = Vector3.new(op.cx, op.cy, op.cz)
-		local region = Region3.new(center - half, center + half):ExpandToGrid(4)
-		terrain:ReplaceMaterial(region, 4, materialNamed(op.source), materialNamed(op.material))
-		return
-	end
-	local material = if op.mode == "Carve" then Enum.Material.Air else materialNamed(op.material)
-	if op.shape == "Box" then
-		terrain:FillBlock(boxFrame(op), Vector3.new(op.sx, op.sy, op.sz), material)
-	elseif op.shape == "Ball" then
-		terrain:FillBall(Vector3.new(op.cx, op.cy, op.cz), op.radius, material)
-	elseif op.shape == "Cylinder" then
-		local frame = CFrame.new(op.cx, op.cy, op.cz)
-		local ok = pcall(function()
-			terrain:FillCylinder(frame, op.height, op.radius, material)
-		end)
-		if not ok then
-			terrain:FillBlock(frame, Vector3.new(op.radius * 2, op.height, op.radius * 2), material)
+-- Writes the columns [i0, i0 + CHUNK) x [k0, k0 + CHUNK) of the heightfield: every column is
+-- solid from its shell bottom up to its surface, the top voxel partly filled so smooth
+-- terrain lands exactly on the model's height. Returns the number of solid voxels.
+local function writeChunk(i0: number, k0: number): number
+	local grid = model.grid
+	local i1 = math.min(i0 + CHUNK, grid.nx) - 1
+	local k1 = math.min(k0 + CHUNK, grid.nz) - 1
+	local lo, hi = math.huge, -math.huge
+	local heights, bottoms, tops, bodies = {}, {}, {}, {}
+	for k = k0, k1 do
+		for i = i0, i1 do
+			local h, bottom, top, body = model.column(i, k)
+			local key = (k - k0) * CHUNK + (i - i0)
+			heights[key], bottoms[key], tops[key], bodies[key] = h, bottom, top, body
+			lo = math.min(lo, bottom)
+			hi = math.max(hi, h)
 		end
 	end
+	local vy0 = math.floor(lo / 4)
+	local vy1 = math.max(vy0, math.ceil(hi / 4) - 1)
+	local sx, sy, sz = i1 - i0 + 1, vy1 - vy0 + 1, k1 - k0 + 1
+	local air = Enum.Material.Air
+	local materials, occupancy = table.create(sx), table.create(sx)
+	local solid = 0
+	for xi = 1, sx do
+		local mx, ox = table.create(sy), table.create(sy)
+		for yi = 1, sy do
+			mx[yi] = table.create(sz, air)
+			ox[yi] = table.create(sz, 0)
+		end
+		materials[xi], occupancy[xi] = mx, ox
+		for zi = 1, sz do
+			local key = (zi - 1) * CHUNK + (xi - 1)
+			local h, bottom = heights[key], bottoms[key]
+			local snowTop = tops[key] == 1
+			local bodyMaterial = VOXEL_MATERIALS[bodies[key]] or Enum.Material.Glacier
+			local topMaterial = VOXEL_MATERIALS[tops[key]] or Enum.Material.Snow
+			for yi = 1, sy do
+				local y0 = (vy0 + yi - 1) * 4
+				if y0 + 4 > bottom and y0 < h then
+					local fill = math.min((h - y0) / 4, 1)
+					ox[yi][zi] = fill
+					-- A snow cap on gentle columns; their cliff faces show the ice body below.
+					mx[yi][zi] = if snowTop and y0 + 2 <= h - TerrainModel.SNOW_DEPTH then bodyMaterial else topMaterial
+					solid += 1
+				end
+			end
+		end
+	end
+	local x0, z0 = grid.x0 + 4 * i0, grid.z0 + 4 * k0
+	local region = Region3.new(Vector3.new(x0, vy0 * 4, z0), Vector3.new(x0 + 4 * sx, (vy1 + 1) * 4, z0 + 4 * sz))
+	terrain:WriteVoxels(region, 4, materials, occupancy)
+	return solid
 end
 
--- Fills the ops of one build phase, in order. Yields a frame now and then so a long fill
--- never trips the script timeout. Returns the number of ops that failed.
-local function buildTerrain(ops: { TerrainModel.Op }, phase: number): number
+-- Writes every chunk of one build phase (1 = overlapping FirstBuild, 2 = the rest). Yields a
+-- frame now and then so a long build never trips the script timeout. Returns the number of
+-- chunks that failed.
+local function buildTerrain(phase: number): number
+	local grid = model.grid
+	local first = WorldLayout.FirstBuild
 	local failed = 0
 	local sliceStart = os.clock()
-	for _, op in ops do
-		if op.phase ~= phase then
-			continue
-		end
-		local ok, err = pcall(applyOp, op)
-		if not ok then
-			failed += 1
-			warn("[World] terrain op " .. op.name .. " failed: " .. tostring(err))
-		end
-		if os.clock() - sliceStart > 0.2 then
-			RunService.Heartbeat:Wait()
-			sliceStart = os.clock()
+	for k0 = 0, grid.nz - 1, CHUNK do
+		for i0 = 0, grid.nx - 1, CHUNK do
+			local x0, z0 = grid.x0 + 4 * i0, grid.z0 + 4 * k0
+			local inFirst = first ~= nil
+				and x0 + 4 * CHUNK > first.x0
+				and x0 < first.x1
+				and z0 + 4 * CHUNK > first.z0
+				and z0 < first.z1
+			if (phase == 1) ~= inFirst then
+				continue
+			end
+			local ok, result = pcall(writeChunk, i0, k0)
+			if ok then
+				counts.voxels += result
+			else
+				failed += 1
+				if failed <= 3 then
+					warn(string.format("[World] terrain chunk (%d, %d) failed: %s", i0, k0, tostring(result)))
+				end
+			end
+			if os.clock() - sliceStart > 0.1 then
+				RunService.Heartbeat:Wait()
+				sliceStart = os.clock()
+			end
 		end
 	end
 	terrain:SetMaterialColor(Enum.Material.Snow, SNOW_COLOR)
 	terrain:SetMaterialColor(Enum.Material.Glacier, GLACIER_COLOR)
-	terrain:SetMaterialColor(Enum.Material.Rock, Color3.fromRGB(104, 104, 112))
-	terrain:SetMaterialColor(Enum.Material.Slate, Color3.fromRGB(92, 92, 100))
+	terrain:SetMaterialColor(Enum.Material.Rock, Color3.fromRGB(78, 80, 92))
 	return failed
 end
 
@@ -183,7 +217,7 @@ local function buildScenery()
 		local a1 = Vector3.new(axes[1][1], axes[1][2], axes[1][3])
 		local a2 = Vector3.new(axes[2][1], axes[2][2], axes[2][3])
 		local a3 = Vector3.new(axes[3][1], axes[3][2], axes[3][3])
-		local apex = Vector3.new(p.x, WorldLayout.Ground.top + p.top, p.z)
+		local apex = Vector3.new(p.x, p.top, p.z)
 		local function cube(name: string, side: number, tip: Vector3, color: Color3, material: string)
 			local part = Instance.new("Part")
 			part.Name = name
@@ -205,7 +239,7 @@ end
 
 -- Invisible catch floor tiles far below the terrain (parts max out at 2048 studs per axis).
 local function buildSafetyFloor()
-	local g = WorldLayout.Ground
+	local g = WorldLayout.Bounds
 	local tile = 2048
 	local x = g.x0
 	while x < g.x1 do
@@ -675,12 +709,11 @@ local function buildAll(started: number)
 	mountain.Name = "Mountain"
 	mountain.Parent = workspace
 
-	local ops = TerrainModel.ops(WorldLayout)
-	model = TerrainModel.new(ops)
+	model = TerrainModel.new(WorldLayout)
 	segments = TerrainModel.segments(WorldLayout)
 
 	-- Phase 1: the Base Camp basin and its surroundings, then the camps, then the rest.
-	local failed = buildTerrain(ops, 1)
+	local failed = buildTerrain(1)
 	buildSafetyFloor()
 	step("skirt", buildSkirt)
 	step("scenery", buildScenery)
@@ -689,7 +722,7 @@ local function buildAll(started: number)
 		RunService.Heartbeat:Wait()
 	end
 	step("camps", buildCamps)
-	failed += buildTerrain(ops, 2)
+	failed += buildTerrain(2)
 	for _ = 1, 3 do
 		RunService.Heartbeat:Wait()
 	end
@@ -710,12 +743,14 @@ local function buildAll(started: number)
 	local hit = workspace:Raycast(base + Vector3.new(0, 60, 0), Vector3.new(0, -120, 0), params)
 	local terrainState = if failed == 0 and hit
 		then "ok"
-		else string.format("PROBLEM (%d failed ops, ground %s)", failed, if hit then "found" else "missing")
+		else string.format("PROBLEM (%d failed chunks, ground %s)", failed, if hit then "found" else "missing")
 
 	print(
 		string.format(
-			"[World] terrain %s | camps %d | trees %d | rocks %d | wood %d | bridges %d | ladders %d | markers %d | hazards %d | built in %.2fs",
+			"[World] terrain %s (%.1fM voxels, model %.2fs) | camps %d | trees %d | rocks %d | wood %d | bridges %d | ladders %d | markers %d | hazards %d | built in %.2fs",
 			terrainState,
+			counts.voxels / 1e6,
+			model.buildSeconds,
 			counts.camps,
 			counts.trees,
 			counts.rocks,
