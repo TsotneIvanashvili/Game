@@ -120,10 +120,12 @@ local function trigger(zone: Zone)
 	local center = zone.releases[1] or zone.part.Position
 	local nearby = playersNear(center, 140)
 	local RemoteGuard = Registry.get("RemoteGuard")
+	local text = zone.part:GetAttribute("Warning")
+	local warning = if type(text) == "string" and text ~= "" then text else "ROCKS ARE LOOSENING ABOVE YOU"
 
 	-- Telegraph.
 	for _, player in nearby do
-		RemoteGuard.notify(player, "ROCKS ARE LOOSENING ABOVE YOU", "danger")
+		RemoteGuard.notify(player, warning, "danger")
 		RemoteGuard.fire(player, "CameraShake", 0.35, WARNING_SECONDS)
 		RemoteGuard.fire(player, "PlaySound", "Rumble", center)
 	end

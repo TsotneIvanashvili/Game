@@ -414,6 +414,19 @@ local function goodSpot(x: number, z: number, maxSlope: number, trailClearance: 
 	return true, h
 end
 
+-- Footprints of scattered props (x, z, radius) so trees and rocks never grow into each other.
+local occupied: { { number } } = {}
+local function clearOfProps(x: number, z: number, r: number): boolean
+	for _, o in occupied do
+		local dx, dz = x - o[1], z - o[2]
+		local min = r + o[3]
+		if dx * dx + dz * dz < min * min then
+			return false
+		end
+	end
+	return true
+end
+
 local function scatterTrees()
 	local trees = folder("Trees")
 	local seed = 1
@@ -425,8 +438,9 @@ local function scatterTrees()
 			local d = math.sqrt(rng:NextNumber()) * cluster.r
 			local x, z = cluster.x + math.cos(a) * d, cluster.z + math.sin(a) * d
 			local ok, h = goodSpot(x, z, 20, 12)
-			if ok then
-				local height = rng:NextNumber(16, 28)
+			local height = rng:NextNumber(16, 28)
+			local reach = height * 0.3 + 1 -- lowest boughs' radius
+			if ok and clearOfProps(x, z, reach) then
 				local built, tree = pcall(
 					AssetFactory.pineTree,
 					CFrame.new(x, h - 0.3, z) * CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0),
@@ -437,6 +451,7 @@ local function scatterTrees()
 				seed += 1
 				if built and tree then
 					tree.Parent = trees
+					table.insert(occupied, { x, z, reach })
 					placed += 1
 					counts.trees += 1
 				end
@@ -479,8 +494,8 @@ local function scatterRocks()
 		local x = s.ax + dx * t + dz / flat * off
 		local z = s.az + dz * t - dx / flat * off
 		local ok, h = goodSpot(x, z, 32, spec.near - 2)
-		if ok then
-			local size = rng:NextNumber(spec.minSize, spec.maxSize)
+		local size = rng:NextNumber(spec.minSize, spec.maxSize)
+		if ok and clearOfProps(x, z, size) then
 			local built, rock = pcall(
 				AssetFactory.rock,
 				CFrame.new(x, h - size * 0.2, z) * CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0),
@@ -491,6 +506,7 @@ local function scatterRocks()
 			seed += 1
 			if built and rock then
 				rock.Parent = rocks
+				table.insert(occupied, { x, z, size })
 				counts.rocks += 1
 			end
 		end
@@ -556,6 +572,9 @@ local function buildHazards()
 		zone.CFrame = CFrame.new(def.zoneCenter)
 		zone.Size = def.zoneSize
 		zone:SetAttribute("PushDirection", def.pushDirection)
+		if def.warning then
+			zone:SetAttribute("Warning", def.warning)
+		end
 		for _, pos in def.releasePoints do
 			local a = Instance.new("Attachment")
 			a.Name = "Release"

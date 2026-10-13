@@ -969,6 +969,61 @@ step("fall damage: a long drop hurts", function()
 	check(rt.raw(h, "Health") < rt.raw(h, "MaxHealth"), "a 30-stud fall did no damage")
 end)
 
+step("ladder: climbing the ice wall's truss is not a speed hack, climbing down is not a fall", function()
+	local spot
+	for _, sg in TerrainModel.segments(WorldLayout) do
+		if sg.via == "Ladder" and not spot then
+			spot = sg
+		end
+	end
+	check(spot, "no ladder segment")
+	local truss
+	server(function()
+		for _, d in rt.workspace:GetDescendants() do
+			if d:IsA("TrussPart") and not truss then
+				local p = d.Position
+				if math.abs(p.X - spot.ax) < 6 and math.abs(p.Z - spot.az) < 8 then
+					truss = d
+				end
+			end
+		end
+	end)
+	check(truss, "no TrussPart at the ice wall")
+	local h = alice._p.Character:FindFirstChildOfClass("Humanoid")
+	local root = rootOf(alice)
+	local tp = rt.raw(truss, "CFrame").Position
+	local function at(y: number): Vector3
+		return v3(tp.X, y + 3, tp.Z) - (v3(spot.bx - spot.ax, 0, spot.bz - spot.az).Unit * 1.6)
+	end
+	teleport(alice, at(spot.ay))
+	local before = #rt.logs
+	server(function()
+		h.Health = h.MaxHealth
+		root.Anchored = true -- the engine's ladder physics, emulated: we move her
+		h:ChangeState(Enum.HumanoidStateType.Climbing)
+	end)
+	local function climb(y0: number, y1: number)
+		local n = math.ceil(math.abs(y1 - y0) / 0.6) -- 6 studs/s, like a truss climb
+		for i = 1, n do
+			server(function()
+				root.CFrame = CFrame.new(at(y0 + (y1 - y0) * i / n))
+			end)
+			rt.run(0.1)
+		end
+	end
+	climb(spot.ay, spot.by - 1)
+	climb(spot.by - 1, spot.ay)
+	server(function()
+		h:ChangeState(Enum.HumanoidStateType.Running)
+		root.Anchored = false
+	end)
+	rt.run(1.5)
+	for i = before + 1, #rt.logs do
+		check(not string.find(rt.logs[i].msg, "snapping back"), "ladder climb was treated as a speed hack")
+	end
+	check(rt.raw(h, "Health") >= rt.raw(h, "MaxHealth") - 1, "climbing down the ladder did fall damage")
+end)
+
 step("rockfall: a forced rockfall in an occupied zone runs and cleans up", function()
 	local DisasterService = Registry.get("DisasterService")
 	local zone = tagged("RockfallZone")[1]

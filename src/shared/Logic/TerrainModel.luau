@@ -721,6 +721,9 @@ function TerrainModel.new(layout: any): Model
 					continue
 				end
 				local w = if d <= s.trail then 1 else 1 - smooth01((d - s.trail) / s.blend)
+				if w <= 0 then
+					continue -- rounding at the very edge of the blend: no weight, no 0/0
+				end
 				local y = s.ay + (s.by - s.ay) * tc
 				local kw = w / ((d + 2) * (d + 2))
 				local idx = k * nx + i

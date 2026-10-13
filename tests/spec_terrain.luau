@@ -52,6 +52,20 @@ test("terrain: the heightfield covers Bounds on the 4-stud voxel grid and builds
 	eq(model.heightAt(b.x0 - 1, 0), NO_GROUND, "no terrain outside Bounds")
 end)
 
+test("terrain: every column has a finite height", function()
+	local bad = 0
+	local g = model.grid
+	for k = 0, g.nz - 1 do
+		for i = 0, g.nx - 1 do
+			local h = model.column(i, k)
+			if h ~= h or h == math.huge or h == -math.huge then
+				bad += 1
+			end
+		end
+	end
+	eq(bad, 0, "columns with NaN or infinite height")
+end)
+
 test("terrain: voxel budget (at most 12M solid voxels)", function()
 	local solid = model.solidVoxels()
 	truthy(solid <= 12e6, string.format("%.1fM solid voxels", solid / 1e6))

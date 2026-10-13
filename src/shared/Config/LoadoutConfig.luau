@@ -106,13 +106,6 @@ local LoadoutConfig = {
 			emergency_ration = 1,
 			first_aid_kit = 1,
 		},
-		RidgeCamp = {
-			energy_bar = 2,
-			dried_meat = 1,
-			hand_warmer = 2,
-			bandage = 1,
-			emergency_ration = 1,
-		},
 	},
 
 	-- Tools the outfitter hands out at most once each per expedition.

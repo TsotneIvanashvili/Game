@@ -181,13 +181,17 @@ function RouteKit.ropeBridge(fromAnchor: Vector3, toAnchor: Vector3, width: numb
 			local t0, t1 = (s - 1) / segments, s / segments
 			local extra0, extra1 = 0.5 * 4 * t0 * (1 - t0), 0.5 * 4 * t1 * (1 - t1)
 			beam(model, at(t0, side, 3.2 - extra0), at(t1, side, 3.2 - extra1), 0.22, { name = "HandRope" })
-			beam(model, at(t0, side, -0.15), at(t1, side, -0.15), 0.2, { name = "DeckRope" })
+			-- Deck ropes run under the plank ends, so every plank rests on them.
+			local under = side * (width / 2 - 0.35) / half
+			beam(model, at(t0, under, -0.4), at(t1, under, -0.4), 0.2, { name = "DeckRope" })
 		end
 		-- Hangers from hand rope to deck every few planks.
 		for s = 1, segments - 1 do
 			local t = s / segments
 			local extra = 0.5 * 4 * t * (1 - t)
-			beam(model, at(t, side, -0.1), at(t, side, 3.2 - extra), 0.12, { name = "Hanger" })
+			-- From the plank's end up to the hand rope.
+			local edge = math.sign(side) * (width / 2 + 0.04)
+			beam(model, at(t, edge, -0.2), at(t, side, 3.2 - extra), 0.12, { name = "Hanger" })
 		end
 		-- Invisible guard so the bridge is not a balance beam.
 		local g0, g1 = at(0, side + math.sign(side) * 0.2, 1.5), at(1, side + math.sign(side) * 0.2, 1.5)

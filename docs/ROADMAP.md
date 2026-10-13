@@ -1,20 +1,24 @@
 # Roadmap
 
-Honest status of the mountain-survival vertical slice. How the systems work is in
+Honest status of the mountain-survival expedition. How the systems work is in
 [ARCHITECTURE.md](ARCHITECTURE.md).
 
-**Overall: code-complete vertical slice, NOT yet play-tested in Roblox Studio.** Everything below
-marked "done in code" compiles with the real Luau compiler, passes selene and StyLua, and (for
-the pure logic layer) passes the unit/stress tests in `tests/spec.luau` (45 at time of writing).
-The manual Studio test plan is in [TESTING.md](TESTING.md). None of it has been
-run inside Roblox yet, so every engine-facing item still carries a "needs Studio testing" caveat.
+**Overall: playable build, NOT yet play-tested in Roblox Studio.** Everything below marked
+"done" compiles with the real Luau compiler and passes selene and StyLua. The pure logic layer
+passes the unit/stress tests in `tests/spec.luau`, the world layout and terrain pass
+`tests/spec_terrain.luau`, and the real server and client boot and play a scripted expedition
+in a headless Roblox emulation (`tests/spec_boot.luau`). How to run them, and the manual Studio
+test plan, are in [TESTING.md](TESTING.md). None of it has run inside Roblox yet, so every
+engine-facing item still carries a "needs Studio testing" caveat: physics, rendering,
+replication, streaming, terrain voxels and DataStores are not emulated.
 
 Status legend
 
 | Status | Meaning |
 |---|---|
 | Done in code | Implemented end to end (server + client where relevant), not yet run in Studio |
-| Done + unit tested | As above, and the logic is covered by `tests/spec.luau` |
+| Done + unit tested | As above, and the logic is covered by `tests/spec.luau` or `tests/spec_terrain.luau` |
+| Boot tested | The flow runs without errors in `tests/spec_boot.luau` (headless emulation, not the engine) |
 | Partial | Some of the checkpoint exists; the gap is listed |
 | Not started | No code yet |
 | Needs Studio testing | Can only be verified in a running place (physics, feel, replication, DataStores) |
@@ -28,55 +32,58 @@ Status legend
 
 | # | Checkpoint | Status | What exists / what's missing |
 |---|---|---|---|
-| 1 | Project foundation (Rojo, folder layout, Registry, PlayerStore, remotes, config modules, test tooling) | **Done in code** | `default.project.json`, `rokit.toml`, bootstrap, RemoteGuard, `tests/check.sh` all green |
-| 2 | Movement, sprint and stamina | **Done + unit tested**; needs Studio testing | Server sets WalkSpeed/JumpHeight from survival modifiers every 0.2 s; MovementController sends sprint/jump intent. Feel (speeds, FOV, jump cost) untested. No custom animations |
-| 3 | Survival stats: hunger, thirst, fatigue, health, oxygen, altitude sickness | **Done + unit tested** | SurvivalModel + SurvivalService; HUD bars; notifications |
-| 4 | Temperature, clothing layers, wetness, frostbite | **Done + unit tested** | WarmthModel (per-region), 13 clothing items, fire heat, shelter, frostbite stages |
-| 5 | Inventory, backpack tiers, weight and slots | **Done + unit tested** (model, 10k-op stress test); UI needs Studio testing | InventoryService, InventoryController, 4 pack tiers, 130% hard cap |
-| 6 | Visible equipment on the character | **Done in code**; needs Studio testing | EquipmentService: clothing shells, pack, harness, stowed axe/rope/tarp/wood, held axe, wet darkening, snow on pack. Greybox only. R15 targeted; on R6, gloves and boots don't show |
-| 7 | Climbing (rock, ice with ice axe) | **Done in code**; needs Studio testing | Client motion via AlignPosition/AlignOrientation, server start/tick authority, grip failure. Mantle, latency tolerance (`WALL_PROBE`, `SPEED_TOLERANCE`) and feel are untested |
-| 8 | Injuries, fall damage, medical items | **Done + unit tested** | 11 injury types with cure paths; splints, bandages, first aid kit; fall thresholds |
-| 9 | Resources: wood, water, food, cooking, boiling | **Done in code** | WoodSource/WaterSource prompts, untreated water sickness, purification, cook/boil/melt snow at fires, thermos |
-| 10 | Building: Build Book, campfire, emergency shelter | **Partial** | 4 of 10 recipes implemented (campfire, tarp shelter, wind wall, trail marker); full server validation pipeline; placement ghost. Missing: wind_fire, snow_shelter, rope_anchor, snow_melter, signal_fire, avalanche_shelter |
-| 11 | Weather | **Done in code** (graph logic unit tested); visuals need Studio testing | 7-state neighbour graph, blending, forced storm path, elevation-based temperature and rain/snow; WeatherController renders fog/sky/precipitation; lightning is cosmetic only |
-| 12 | Natural disasters | **Partial** | Rockfall fully telegraphed and pooled. Avalanche **not started** (design in ARCHITECTURE section 13) |
-| 13 | Multiplayer teamwork: downed, revive, carry, give, treat, pings | **Done in code**; needs multi-client Studio testing | RescueService, Give/Treat, PingController, teammate list on HUD, rejoin stash, leave-while-downed = evacuation. Rope teamwork **not started** |
-| 14 | Checkpoints, expedition flow, progression | **Done in code** | Camps + logbooks, respawn at last camp, director (snowfall at snowline, forced storm after Ridge Camp), section end + summary, XP/ranks. Blueprint unlocks have no in-game source yet |
-| 15 | Saving and loading | **Done in code**; needs live DataStore testing | Session lock, retries, sanitize, read-only fallback, autosave, BindToClose, quick-rejoin handling. Requires a published place with Studio API access |
-| 16 | Audio, VFX, art, polish, optimization, QA | **Partial** | AudioController/ConditionController/WeatherController exist but every sound id is empty (game is silent), particles use default textures, all models are greybox, no animations, no profiling, no in-Studio test pass |
+| 1 | Project foundation (Rojo, folder layout, Registry, PlayerStore, remotes, config modules, test tooling) | **Done** | `default.project.json`, `rokit.toml`, bootstrap, RemoteGuard, `tests/check.sh` (compile, lint, format, all suites) |
+| 2 | Movement, sprint and stamina | **Done + unit tested**, boot tested; needs Studio testing | Server sets WalkSpeed/JumpHeight from survival modifiers every 0.2 s; MovementController sends sprint/jump intent. Feel (speeds, FOV, jump cost) untested. No custom animations |
+| 3 | Survival stats: hunger, thirst, fatigue, health, oxygen, altitude sickness | **Done + unit tested** | SurvivalModel + SurvivalService; icon stats on the HUD; notifications |
+| 4 | Temperature, clothing layers, wetness, frostbite | **Done + unit tested** | WarmthModel (per region), 25 clothing items over 8 slots, fire heat, shelters, frostbite stages, day/night temperature; climate tests per camp |
+| 5 | Inventory, backpack tiers, weight and slots | **Done + unit tested** (model, 10k-op stress test), boot tested; UI needs Studio testing | InventoryService, InventoryController, hotbar 1-4, 4 pack tiers, 130% hard cap |
+| 6 | Visible equipment on the character | **Done in code**, boot tested; needs Studio testing | EquipmentService + GearFactory (stylized v2): parka with fur ring, pants, gloves, crampon boots, helmet with headlamp, mask, goggles, pack by tier, harness, stowed axe/rope/tarp/wood, held axe, wet darkening, snow on pack. Head-gear toggles (H) |
+| 7 | Climbing (rock, ice with ice axe) | **Done in code**, boot tested (start + climb); needs Studio testing | Client motion via AlignPosition/AlignOrientation, server start/tick authority, grip failure. Ladders are TrussParts (engine climbing). Mantle, latency tolerance and feel are untested |
+| 8 | Injuries, fall damage, medical items | **Done + unit tested** | 11 injury types with cure paths; splints, bandages, first aid kit; fall thresholds; camp rest on sleeping mats |
+| 9 | Resources: wood, water, food, cooking, boiling | **Done in code**, boot tested | WoodSource prompts (scarce, mostly low on the mountain), camp meltwater stations, melt snow / cook / boil at any fire, thermos. No streams (water comes from snow) |
+| 10 | Building: Build Book, campfire, emergency shelter | **Partial**, boot tested | 5 of 11 recipes (campfire, tent, tarp shelter, wind wall, trail marker); full server validation; placement ghost. Missing: wind_fire, snow_shelter, rope_anchor, snow_melter, signal_fire, avalanche_shelter |
+| 11 | Weather | **Done in code** (graph logic unit tested), boot tested; visuals need Studio testing | 7-state neighbour graph, blending, forced storm path, always snow, 20-minute day/night cycle, weather banners. WeatherController renders sky/fog/snow; lightning is not rendered |
+| 12 | Natural disasters | **Partial**, boot tested (forced rockfall) | Rockfall fully telegraphed and pooled, in two zones (valley avalanche slope, serac band). A real snow avalanche is **not started** (design in ARCHITECTURE section 13) |
+| 13 | Multiplayer teamwork: downed, revive, carry, give, treat, pings | **Done in code**, boot tested (2 clients); needs multi-client Studio testing | RescueService, Give/Treat, PingController, teammate list on HUD, rejoin stash, leave-while-downed = evacuation. Rope teamwork **not started** |
+| 14 | Checkpoints, expedition flow, progression | **Done in code**, boot tested | Base Camp, Camp 1, Camp 2 with check-in rings, logbooks and sleep spots; respawn at last camp; director (storm after Camp 1 and after Camp 2); summit summary; XP/ranks. Blueprint unlocks have no in-game source yet |
+| 15 | Saving and loading | **Done in code**, boot tested (mock DataStore, outage, shutdown); needs live DataStore testing | Session lock, retries, sanitize, read-only fallback, autosave, BindToClose, quick-rejoin handling. Requires a published place with Studio API access |
+| 16 | Audio, VFX, art, polish, optimization, QA | **Partial** | Art pass v2 done (stylized Part-built camps, tents, props, gear, UI; title screen, compass, banners, footprints, fire/lamp ambience). Still: every sound id is empty (game is silent), particles use default textures, no meshes, no animations, no profiling, no in-Studio test pass |
+| 17 | World v3: natural mountain | **Done + unit tested** (`spec_terrain`), boot tested; needs Studio testing | Heightfield terrain from `TerrainModel`, written with `WriteVoxels` in chunks, Base Camp first; camps, bridges, ladders, markers, fences, backdrop peaks, snow skirt. Generation time, voxel look and walkability need checking in the engine |
+| 18 | Offline verification tooling | **Done** | Headless Roblox emulation + boot test (`tests/mock`, `tests/spec_boot.luau`); approximate preview renderer and geometry checks (`tests/render`, images in `docs/previews/`) |
 
 ---
 
-## Vertical slice: 22-step checklist
+## Vertical slice: route checklist
 
-The slice is one mountain section: Base Camp -> forest trail -> cliff or safe ramp -> snow slope ->
-Ridge Camp -> ice wall or bypass -> Ridge Col. Every step below is implemented in code; **none has
-been played through in Studio**.
+The slice is the whole mountain: Base Camp -> valley -> Headwall switchbacks -> Camp 1 ->
+crevasse plateau with rope bridges -> ice wall (ladder or bypass) -> glacier switchbacks under
+a serac band -> Camp 2 -> knife-edge ridge (notch bridge, ice-step ladder) -> Summit
+(y 800 = 3500 m). Every step below is implemented in code; **none has been played through in
+Studio**. The boot test covers many steps by teleporting along the route, not by walking it.
 
 | # | Step | Systems implementing it | Status |
 |---|---|---|---|
-| 1 | Join and spawn at Base Camp | WorldBuilder (SpawnLocation), PlayerService, DataService, ProgressionService | Done in code |
-| 2 | Pick clothing at the outfitter | CampService prompt -> `OpenPanel` -> PanelController -> `Outfit` -> InventoryService; saved to `profile.loadout` | Done in code |
-| 3 | Pick a backpack (slots vs. weight limit) | Same path; pack switch refused if contents don't fit | Done in code |
-| 4 | Take food, water and tools | Supply crate (`Supply`, per-player allowance), outfitter one-off tools, StarterPack | Done in code |
-| 5 | Check pack weight and contents | InventoryController (Tab / I), `Weight`/`WeightLimit` attributes on the HUD | Done in code |
-| 6 | See your gear on your character (and on teammates) | EquipmentService | Done in code (greybox) |
-| 7 | Hike the forest trail | WorldLayout ForestTrail, SurvivalService exertion, zones | Done in code |
-| 8 | Gather wood | ResourceService WoodSource prompt; wood bundle appears on the pack | Done in code |
-| 9 | Manage hunger, thirst, stamina and fatigue; eat and drink | SurvivalModel, InventoryService Use, WaterSource Fill/Drink, purification tablets | Done + unit tested |
-| 10 | Choose a route: technical cliff or safe ramp | WorldLayout (Cliff with rest ledge, SafeRamp, Ravine fallback) | Done in code |
-| 11 | Climb the cliff on stamina | ClimbingController + ClimbingService, grip failure at 0 stamina | Done in code; needs feel testing |
-| 12 | Risk a fall and an injury; treat it | SurvivalService fall tracking, InjuryModel, splint/bandage/first aid kit | Done + unit tested |
-| 13 | Weather turns: snow rolls in at the snowline | ExpeditionService director -> WeatherService.force -> WeatherController | Done in code |
-| 14 | Get cold with altitude, wind and wet clothes; frostbite warnings | WarmthModel, SurvivalService, ConditionController, HUD | Done + unit tested |
-| 15 | Build a campfire: warm up, dry off, cook, boil water | BuildingService, BuildBookController, InventoryService cook/boil | Done in code |
-| 16 | Rockfall in the East Gully: warning, boulders, injuries | DisasterService | Done in code |
-| 17 | A teammate goes down: revive, carry, treat, or they evacuate | RescueService, InventoryService Treat, MovementController (X), HUD downed overlay | Done in code; needs multi-client testing |
-| 18 | Reach Ridge Camp and sign the logbook | CampService, ProgressionService XP, new respawn point | Done in code |
-| 19 | The storm is forced in: shelter in the cabin or build a tarp | ExpeditionService -> WeatherService.force("Storm"), cabin ShelterVolume, tarp shelter durability/reinforce | Done in code |
-| 20 | Ice wall with a held ice axe, or the longer bypass | ClimbConfig ice materials, Glacier IceWall, IceBypass slab, held-item check | Done in code |
-| 21 | Reach the Ridge Col and see the expedition summary | CampService SectionEnd -> ExpeditionService.sectionComplete -> SummaryController | Done in code |
-| 22 | Progress is saved (XP, rank, totals, loadout) | DataService, ProgressionService | Done in code; needs live DataStore testing |
+| 1 | Join, title screen, spawn at Base Camp once the world is built | WorldBuilder, `CharacterAutoLoads` gate, TitleController, PlayerService, DataService | Boot tested |
+| 2 | Start in the default expedition kit with a starter pack | LoadoutConfig, InventoryService.setupLoadout, EquipmentService | Boot tested |
+| 3 | Change clothing, pack or take a tent at the outfitter (equipment tent) | CampService prompt -> `OpenPanel` -> PanelController -> `Outfit` -> InventoryService; saved to `profile.loadout` | Boot tested |
+| 4 | Take food and medical supplies from the crate | `Supply`, per-player allowance (BaseCamp / Camp1 / Camp2) | Boot tested |
+| 5 | Check pack weight and contents; hotbar; gear toggles | InventoryController (Tab / I), HotbarController (1-4), GearMenuController (H) | Boot tested |
+| 6 | See your gear on your character (and on teammates) | EquipmentService, GearFactory | Boot tested (parts exist); looks need Studio |
+| 7 | Hike the valley; gather wood | WorldLayout route + WoodSources, ResourceService, SurvivalService exertion | Boot tested (teleported) |
+| 8 | Manage hunger, thirst, stamina and fatigue; melt snow and boil water at a fire | SurvivalModel, InventoryService Use, BuildingService fire prompts, camp meltwater | Done + unit tested |
+| 9 | Rockfall off the avalanche slope: warning, boulders, injuries | DisasterService (`ValleyAvalanche`) | Boot tested (forced) |
+| 10 | Switchbacks up the Headwall to Camp 1 | TerrainModel corridors, marker poles | Done + terrain tested |
+| 11 | Check in at Camp 1 (ring or logbook) | CampService, ProgressionService XP, new respawn point, Banner | Boot tested |
+| 12 | The storm comes: shelter in a camp tent, pitch your own tent, or build a tarp | ExpeditionService -> WeatherService.force("Storm"), camp `ShelterVolume`s, tent/tarp durability | Boot tested (forced storm, tent) |
+| 13 | Cross the crevasse plateau on rope bridges (escape ramps if you fall in) | RouteKit.ropeBridge, crevasse ramps in TerrainModel | Done + terrain tested; bridge feel needs Studio |
+| 14 | Ice wall: ladder, ice-axe climb, or the long bypass ramp | RouteKit.ladder (TrussPart), ClimbingService (Glacier), `Alternates.IceWallBypass` | Terrain tested; ladder vs movement sanity check is suspect (see known gaps) |
+| 15 | Glacier switchbacks under the serac band; serac fall | DisasterService (`SeracFall`) | Done in code |
+| 16 | Check in at Camp 2; second storm; finite woodpile | CampService, ExpeditionService | Boot tested (ring) |
+| 17 | Get cold with altitude, wind, night and wet clothes; frostbite warnings | WarmthModel, WeatherModel day/night, SurvivalService, ConditionController, HUD | Done + unit tested |
+| 18 | A teammate goes down: revive, carry, treat, or they evacuate | RescueService, InventoryService Treat, MovementController (X), HUD downed overlay | Boot tested; needs multi-client Studio testing |
+| 19 | The knife-edge ridge: fences, notch bridge, ice-step ladder, fixed ropes | RouteKit, WorldLayout Fences/FixedRopes | Done + terrain tested |
+| 20 | Reach the summit and see the expedition summary | CampService SectionEnd -> ExpeditionService.sectionComplete -> SummaryController | Boot tested |
+| 21 | Progress is saved (XP, rank, totals, loadout) | DataService, ProgressionService | Boot tested (mock); needs live DataStore testing |
 
 ---
 
@@ -85,34 +92,39 @@ been played through in Studio**.
 Highest priority first.
 
 1. **Studio play-test pass** (the gate for everything else). Build with Rojo, run solo and a
-   6-player local server, walk all 22 slice steps, and log every bug. Specifically verify:
-   climbing feel and mantle, carry welds, fall damage thresholds, build placement on terrain,
-   rockfall boulder paths, weather visuals, DataStore session locking across two servers.
-2. **Tune the server movement sanity check** (SurvivalService; see ARCHITECTURE section 14)
+   6-player local server, walk the whole route, and log every bug. Specifically verify:
+   terrain generation time and look (`[World] ...` line), that the route is walkable at real
+   humanoid physics, ladders, rope bridges, climbing feel and mantle, carry welds, fall damage
+   thresholds, build placement on terrain, rockfall boulder paths, weather and night visuals,
+   streaming around camps, DataStore session locking across two servers.
+2. **Ladders vs the movement sanity check**: confirm whether a player climbing the ice wall
+   ladder is snapped back (see known gaps) and exempt engine climbing
+   (`HumanoidStateType.Climbing`, or ground checks against the ladder) if so.
+3. **Tune the server movement sanity check** (SurvivalService; see ARCHITECTURE section 14)
    against real play: knockback from boulders, steep slopes, jumping off walls, lag spikes.
-3. **Avalanche**: second disaster, following the design in ARCHITECTURE section 13
+4. **Audio IDs**: fill every key in `src/client/AudioConfig.luau` (Wind, Snowfall, Blizzard,
+   Rumble, StormBanner, FireCrackle, HeavyBreathing, Heartbeat, Shivering, SnowStep, IceStep,
+   RockStep). Until then the game is silent.
+5. **Climate and altitude tuning** in real play: storm and night temperatures per camp, how
+   long a starter suit lasts, and the oxygen curve (it only falls to about 88 at the summit, so
+   the "LOW OXYGEN" warning below 80 never fires).
+6. **Real avalanche** on the valley's `AvalancheSlope`, following ARCHITECTURE section 13
    (`AvalancheZone` tag, telegraph, sweep, buried/dig-out state, `avalanche_shelter` recipe).
-4. **Rope teamwork**: implement `rope_anchor` (recipe exists, `implemented = false`), fixed lines
-   that make a climb section cheaper for the team, roped travel on the glacier (a falling
-   teammate is held by the others), belay assist on climbs.
-5. **Crampons**: new item (spec already in `docs/ASSET_SPECS.md`); faster, cheaper ice climbing
-   and no slipping on ice/glacier terrain; EquipmentService visual on the boots.
-6. **More zones**: `ZoneDefs` already defines Frozen Ridge, Glacier, High Altitude and Summit;
-   extend `WorldLayout` upward with a third camp, use `XP.Summit` and `totals.summits`, and wire
-   the unused `woodAbundance`/`snowCover` zone fields into resource placement.
-7. **Animations**: climbing, crawling while downed, being carried, resting/sitting by the fire,
-   building, eating/drinking, shivering. Currently everything uses default character animations.
-8. **Real art**: replace AssetFactory greybox builders with meshes per `docs/ASSET_SPECS.md`,
-   keeping the anchor names (`Axe`, `Rope`, `Tarp`, `Wood`); real item icons; snowflake, raindrop,
-   breath and dust particle textures.
-9. **Audio IDs**: fill every key in `src/client/AudioConfig.luau` (Wind, Rain, Blizzard, Rumble,
-   Thunder, FireCrackle, HeavyBreathing, Heartbeat, Shivering, SnowStep, RockStep). Until then
-   the game is silent.
+7. **Rope teamwork**: implement `rope_anchor` (recipe exists, `implemented = false`), make the
+   ridge's fixed ropes do something (they are decorative), roped travel on the crevasse plateau,
+   belay assist on climbs.
+8. **Crampon gameplay**: the expedition boots and overboots show crampons and say "grip on
+   ice", but nothing reads it yet (no ice slipping, no cheaper ice climbing).
+9. **Animations**: climbing, crawling while downed, being carried, sleeping, resting by the
+   fire, building, eating/drinking, shivering. Currently everything uses default animations.
 10. Remaining Build Book recipes, and an in-game source for blueprint unlocks
     (`ProgressionService.unlockBlueprint` is never called yet).
 11. Settings UI: `profile.settings.cameraShake` is saved but nothing reads or changes it.
 12. Profiling with 6 players (MicroProfiler, network stats), then decide whether
-    `BuildingService.environmentAt` needs a spatial grid.
+    `BuildingService.environmentAt` needs a spatial grid and whether the voxel count can drop.
+13. **Real art** where Parts are not enough: meshes per `docs/ASSET_SPECS.md` (keeping the
+    anchor and child names services rely on), item icons, snowflake/breath/dust particle
+    textures.
 
 ---
 
@@ -120,18 +132,28 @@ Highest priority first.
 
 Small mismatches between code, comments and the design, for the owning workstream:
 
+- **Ladders and the movement sanity check.** `SurvivalService` counts rising more than
+  `JUMP_HEIGHT + 8` (14.5 studs) above the last grounded height as excess on every tick, and
+  nothing marks TrussPart climbing as grounded or exempt. Climbing the 48-stud ice wall ladder
+  (and possibly the 28-stud ridge ice-step ladder) should accumulate past the 25-stud tolerance
+  and snap the player back to the foot. Found by reading the code; the boot test teleports along
+  the route, so it does not cover this.
 - Wind wall `description` says it shelters "anyone standing in its lee", but the code applies
   wind x0.4 to everyone within 8 studs regardless of wind direction.
-- Lightning has no gameplay effect (client flashes only).
+- Anyone can pack up anyone's tent and keep the `tent_pack`.
+- Both rockfall zones (valley avalanche slope, serac band) telegraph with "ROCKS ARE LOOSENING
+  ABOVE YOU".
+- The weather `lightning` parameter is not used by anything.
+- `ProgressionConfig.XP.SectionComplete` (300) is unused; the summit awards `XP.Summit` (1000).
+- `CampKit` builds a `RescueSpawn` part on Base Camp "for evacuations", but nothing reads it;
+  evacuees go to their camp's `Spawn`.
+- `WorldBuilder` says character spawning waits for the `WorldReady` workspace attribute, but
+  nothing reads it; the gate is `Players.CharacterAutoLoads` in the bootstrap.
 - DataService tracks `dirty` but autosave saves every session regardless.
 - `GameConfig.MAX_PLAYERS_HINT` says the UI uses it; nothing does. Max players must be set in
   Game Settings.
 - Snow load on tarp roofs is visual only; it doesn't affect durability.
 - Rejoin restore only works on the same server within 600 s; supply allowances reset otherwise.
-
-
-### Fixed after this review
-- Storm offset is now −7 °C: rain (thunderstorm) at Base Camp, blizzard at Ridge Camp.
-- `XP.FirstShelter` is read from ProgressionConfig.
-- `SectionEnd` parts added after start are picked up.
-- `PingBroadcast` comment lists all three arguments.
+- `tests/render/render.py`'s docstring mentions a `--check` flag that does not exist (use
+  `tests/render/checks.py`), and `docs/previews/README.md` still says new players get the
+  daypack (fixed in `InventoryService.setupLoadout`).

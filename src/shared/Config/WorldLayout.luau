@@ -141,7 +141,7 @@ local WorldLayout = {
 	Relief = {
 		BaseCamp = { up = 220, down = 0, floor = 190, rough = 0.6, trail = 12, blend = 36 },
 		V1 = { up = 300, down = 0, floor = 90, rough = 1 },
-		HeadwallFoot = { up = 320, down = 0, floor = 70, rough = 1, trail = 10, blend = 30 },
+		HeadwallFoot = { up = 320, down = 0, floor = 70, rough = 1, trail = 10, blend = 40 },
 		Camp1 = { up = 360, down = 0, floor = 200, rough = 1 },
 		ShelfEast = { up = 320, down = 0, floor = 80, rough = 1 },
 		Camp2 = { up = 160, down = 0, floor = 70, rough = 0.8 },
@@ -167,7 +167,7 @@ local WorldLayout = {
 			yaw = -90, -- local +z points west: the slope rises away from the trail
 			y = 90,
 			grade = 0.6,
-			blend = 80,
+			blend = 140,
 		},
 		{ name = "Camp1Floor", kind = "pad", x = -150, z = 1630, y = 200, r = 60, blend = 60, locked = true },
 		{
@@ -284,7 +284,7 @@ local WorldLayout = {
 			center = V(0, 0, 0),
 			size = "Base",
 			supplyTable = "BaseCamp",
-			spawn = V(0, 0, -45),
+			spawn = V(0, 0, -56), -- clear of the sleeping tent (x 3..29, z -48..-28)
 			yaw = 0,
 			footprint = V(180, 0, 140),
 			radius = 110,
@@ -448,10 +448,12 @@ local WorldLayout = {
 	RockScatter = { count = 150, near = 14, far = 80, minSize = 2, maxSize = 7 },
 
 	-- Rockfall / serac fall hazards (DisasterService contract: invisible box covering where
-	-- players stand, Release attachments, PushDirection). Release y = terrain + 4.
+	-- players stand, Release attachments, PushDirection, optional Warning text). Release
+	-- y = terrain + 4.
 	RockfallZones = {
 		{
 			name = "ValleyAvalanche",
+			warning = "AVALANCHE! SNOW IS SLIDING ABOVE YOU",
 			zoneCenter = V(10, 25, 500),
 			zoneSize = V(160, 60, 240),
 			releasePoints = { V(-250, 0, 440), V(-250, 0, 500), V(-250, 0, 560) },
@@ -459,6 +461,7 @@ local WorldLayout = {
 		},
 		{
 			name = "SeracFall",
+			warning = "THE SERACS ARE COLLAPSING ABOVE YOU",
 			zoneCenter = V(SERAC.mid.X, 412, SERAC.mid.Z),
 			zoneSize = V(240, 60, 100),
 			releasePoints = {

@@ -29,6 +29,8 @@ local characterList: { Instance } = {}
 local raycastParams = RaycastParams.new()
 raycastParams.FilterType = Enum.RaycastFilterType.Exclude
 raycastParams.IgnoreWater = false
+local ladderParams = OverlapParams.new()
+ladderParams.FilterType = Enum.RaycastFilterType.Exclude
 
 -- Accumulated excess movement (studs) before a player is snapped back.
 local MOVEMENT_TOLERANCE_STUDS = 25
@@ -76,8 +78,25 @@ local function refreshCharacterFilter()
 		table.insert(characterList, model)
 	end
 	raycastParams.FilterDescendantsInstances = characterList
+	ladderParams.FilterDescendantsInstances = characterList
 end
 SurvivalService.refreshCharacterFilter = refreshCharacterFilter
+
+-- On an engine truss ladder (the ice wall, the ridge ice step) the humanoid is in the Climbing
+-- state with nothing underfoot. That state is set by the client that owns the character, so
+-- the server only believes it with a real TrussPart within arm's reach.
+local LADDER_REACH = 4
+local function onLadder(root: BasePart, humanoid: Humanoid): boolean
+	if humanoid:GetState() ~= Enum.HumanoidStateType.Climbing then
+		return false
+	end
+	for _, part in workspace:GetPartBoundsInRadius(root.Position, LADDER_REACH, ladderParams) do
+		if part:IsA("TrussPart") then
+			return true
+		end
+	end
+	return false
+end
 
 function SurvivalService.groundRaycastParams(): RaycastParams
 	return raycastParams
@@ -360,12 +379,15 @@ local function tickPlayer(
 	-- so an exploiter can raise them locally; the server compares actual displacement with what
 	-- the server-set values allow. Short bursts (knockback, jumping off a wall) are tolerated by
 	-- accumulating the excess; a sustained excess snaps the player back to their last good spot.
+	local ladder = onLadder(root, humanoid)
 	if not record.carriedBy and not record.climbing and record.lastPosition then
 		local last = record.lastPosition :: Vector3
 		local step = Vector3.new(pos.X - last.X, 0, pos.Z - last.Z).Magnitude
 		local allowed = humanoid.WalkSpeed * dt * 1.5 + 1.5
 		local excess = math.max(0, step - allowed)
-		if record.groundY and pos.Y > record.groundY + GameConfig.JUMP_HEIGHT + 8 then
+		if ladder then
+			record.groundY = pos.Y -- a ladder rung is something to stand on
+		elseif record.groundY and pos.Y > record.groundY + GameConfig.JUMP_HEIGHT + 8 then
 			excess += pos.Y - (record.groundY + GameConfig.JUMP_HEIGHT + 8) -- rising with nothing to stand on
 		end
 		if excess > 0 then
@@ -384,8 +406,8 @@ local function tickPlayer(
 		end
 	end
 
-	-- Fall tracking.
-	if record.climbing or record.carriedBy then
+	-- Fall tracking. Letting go of a ladder midway starts a fall from there.
+	if record.climbing or record.carriedBy or ladder then
 		record.peakY = nil
 		record.groundY = pos.Y
 	else

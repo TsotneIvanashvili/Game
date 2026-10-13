@@ -4,11 +4,11 @@
     python3 tests/render/render.py                 # dump the scene, render every preset
     python3 tests/render/render.py camp1 summit    # only these presets
     python3 tests/render/render.py --list          # list presets
-    python3 tests/render/render.py --check         # print geometry diagnostics only
+    python3 tests/render/checks.py               # geometry diagnostics (floating, buried, clashes)
 
 Pipeline: `luaurun tests/render/dump.luau <repo>` runs the real WorldBuilder / CampKit /
 RouteKit / AssetFactory / GearFactory / EquipmentService code in a headless mock and prints
-every part, the terrain heightfield (from TerrainModel, 2-stud grid) and the terrain op list.
+every part and the terrain heightfield (every voxel column of TerrainModel).
 This script rasterises that with a numpy z-buffer: flat-shaded triangles, a directional sun
 with a shadow map, sky-tinted ambient light, material tints, distance fog, a sky gradient,
 2x2 supersampling, and SurfaceGui / BillboardGui text drawn onto the right parts.

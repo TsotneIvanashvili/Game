@@ -192,7 +192,16 @@ function CampKit.build(def: CampDef, groundAt: Ground): Model
 		CollectionService:AddTag(mat.PrimaryPart :: BasePart, "SleepSpot")
 	end
 	-- Warm light hanging from a tent's centre pole.
-	local function hangingLamp(parent: Instance, cf: CFrame)
+	-- A lantern hanging on a cord `cord` studs long from the roof above it.
+	local function hangingLamp(parent: Instance, cf: CFrame, cord: number)
+		AssetFactory.part(parent, {
+			name = "LanternCord",
+			size = Vector3.new(0.1, cord, 0.1),
+			cframe = cf * CFrame.new(0, 0.45 + cord / 2, 0),
+			color = Color3.fromRGB(40, 40, 44),
+			material = Enum.Material.SmoothPlastic,
+		}).CastShadow =
+			false
 		local bulb = AssetFactory.part(parent, {
 			name = "Lantern",
 			size = Vector3.new(0.9, 0.9, 0.9),
@@ -366,7 +375,7 @@ function CampKit.build(def: CampDef, groundAt: Ground): Model
 		AssetFactory.outfitterRack(eqf * CFrame.new(-17, 0.3, -2) * CFrame.Angles(0, math.rad(90), 0)).Parent = eq
 		AssetFactory.crateStack(eqf * CFrame.new(15, 0.3, -6), 3).Parent = eq
 		for _, z in { -7, 7 } do
-			hangingLamp(eq, eqf * CFrame.new(0.75, 10, z))
+			hangingLamp(eq, eqf * CFrame.new(0.75, 10, z), 3.3)
 		end
 
 		-- Sleeping tent: blue walk-in tent with a row of mats ------------------------------
@@ -375,7 +384,7 @@ function CampKit.build(def: CampDef, groundAt: Ground): Model
 		for i = 0, 5 do
 			sleepSpot(sl, slf * CFrame.new(-8.75 + i * 3.5, 0.3, 4.6))
 		end
-		hangingLamp(sl, slf * CFrame.new(0.75, 7.5, -4.5))
+		hangingLamp(sl, slf * CFrame.new(0.75, 7.5, -4.5), 2.75)
 
 		-- Rescue station, stairs toward the fire -------------------------------------------
 		local rsf = footprint(46, -8, 90, 26, 38, true)
@@ -424,7 +433,7 @@ function CampKit.build(def: CampDef, groundAt: Ground): Model
 		for _, x in { -2.2, 2.2 } do
 			sleepSpot(gt, gtf * CFrame.new(x, 0.3, 2.1))
 		end
-		hangingLamp(gt, gtf * CFrame.new(0.75, 6.8, 0))
+		hangingLamp(gt, gtf * CFrame.new(0.75, 6.8, 0), 2.35)
 
 		local slots = {
 			{ x = -16, z = 4, kind = "dome" },

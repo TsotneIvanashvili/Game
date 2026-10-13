@@ -67,14 +67,17 @@ where you fell). Gamepad and touch buttons are bound for climb, sprint, drop and
 ## Tests
 
 ```sh
-tests/check.sh   # full check: compile every .luau, selene, stylua --check, unit tests
-tests/run.sh     # unit/stress tests only (src/shared Logic + Config)
+tests/check.sh   # full check: compile every .luau, selene, stylua --check, all test suites
+tests/run.sh     # the suites only: every tests/spec*.luau
 ```
 
-The tests run the pure logic modules in a standalone Luau VM. `tests/harness.luau` fakes the
-`script` instance tree and stubs `Vector3`/`Color3`; `tests/compile_check.luau` compiles each
-file with the real Luau compiler. Both need **`luaurun`** on your PATH, a ~20-line Rust host built
-on [mlua](https://github.com/mlua-rs/mlua) that exposes `__loadfile(path)` and `ROOT`:
+The suites run in a standalone Luau VM: `tests/spec.luau` (pure logic and climate, through
+`tests/harness.luau`, which fakes the `script` tree and stubs `Vector3`/`Color3`),
+`tests/spec_terrain.luau` (terrain heightfield and route layout) and `tests/spec_boot.luau`
+(the real server and client code booted in the headless Roblox emulation in `tests/mock/`).
+`tests/compile_check.luau` compiles each file with the real Luau compiler. All of them need
+**`luaurun`** on your PATH, a ~20-line Rust host built on [mlua](https://github.com/mlua-rs/mlua)
+that exposes `__loadfile(path)` and `ROOT`:
 
 ```toml
 # Cargo.toml
@@ -100,4 +103,6 @@ fn main() -> Result<()> {
 ```
 
 Build it with `cargo install --path .`. `selene` and `stylua` come from `rokit install`.
-Services and client controllers are not unit tested; they need a Studio play-test.
+The headless boot test catches runtime errors in services and controllers, but not physics,
+replication, streaming, terrain voxels or looks; those need a Studio play-test. Details and the
+preview renderer (`tests/render/`) are in [docs/TESTING.md](docs/TESTING.md).

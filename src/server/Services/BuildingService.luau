@@ -461,6 +461,11 @@ local function spawnStructure(player: Player, recipe: RecipeDefs.Recipe, frame: 
 			if not table.find(structures, s) then
 				return -- already packed by someone else
 			end
+			-- Only the owner packs a tent away, unless they have left the server.
+			if p ~= player and player.Parent ~= nil then
+				remote().notify(p, "This is " .. player.DisplayName .. "'s tent.", "warn")
+				return
+			end
 			if Registry.get("InventoryService").add(p, "tent_pack", 1) <= 0 then
 				remote().notify(p, "No room in your pack for the tent.", "warn")
 				return
