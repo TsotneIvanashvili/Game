@@ -436,7 +436,7 @@ function CampKit.build(def: CampDef, groundAt: Ground): Model
 			local slot = slots[i]
 			tent(slot.kind, slot.x, slot.z, TENT_COLORS[(def.index + i) % #TENT_COLORS + 1])
 		end
-		crates(17, -12, if def.index % 2 == 0 then 3 else 2)
+		crates(19, -15, if def.index % 2 == 0 then 3 else 2) -- clear of the supply crate at (13, -7)
 		flag(-7.5, -19, TENT_COLORS[def.index % #TENT_COLORS + 1])
 		lamp(6, -9)
 		lamp(-6, 9)

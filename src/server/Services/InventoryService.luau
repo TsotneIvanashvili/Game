@@ -681,6 +681,9 @@ function InventoryService.setupLoadout(player: Player, record: PlayerStore.Recor
 	for slot, itemId in LoadoutConfig.DefaultWorn do
 		record.worn[slot] = itemId
 	end
+	-- Start from the configured default pack; a saved choice below overrides it. (PlayerStore's
+	-- placeholder is the daypack, which new players were wrongly keeping.)
+	record.backpackId = LoadoutConfig.DefaultBackpack
 	for slot, itemId in profile.loadout do
 		local def = ItemDefs.ById[itemId]
 		if slot == "Backpack" then
