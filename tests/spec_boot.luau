@@ -11,6 +11,7 @@ local realStart = os.clock()
 local rt = Mock.new(ROOT)
 rt.latency = 0.05 -- 50 ms each way for remotes, like a decent connection
 local Enum = rt.Enum
+local typeof = rt.typeof -- Roblox type names for mock datatypes
 local v3 = rt.v3
 local CFrame = rt.types.CFrame
 
@@ -23,7 +24,7 @@ local passed, failed = 0, 0
 local failures = {}
 local errorCursor, logCursor = 0, 0
 
-local function problemsSinceLastCheck(): { string }
+local function problemsSinceLastCheck(stepAllowed: { string }?): { string }
 	local out = {}
 	for i = errorCursor + 1, #rt.errors do
 		local e = rt.errors[i]
@@ -34,9 +35,11 @@ local function problemsSinceLastCheck(): { string }
 		local l = rt.logs[i]
 		if l.kind == "warn" then
 			local allowed = false
-			for _, pattern in ALLOWED_WARNINGS do
-				if string.find(l.msg, pattern) then
-					allowed = true
+			for _, list in { ALLOWED_WARNINGS, stepAllowed or {} } do
+				for _, pattern in list do
+					if string.find(l.msg, pattern) then
+						allowed = true
+					end
 				end
 			end
 			if not allowed then
@@ -48,11 +51,12 @@ local function problemsSinceLastCheck(): { string }
 	return out
 end
 
-local function step(name: string, fn: () -> ())
+-- `allowed`: extra warn() patterns this step expects (e.g. a simulated outage).
+local function step(name: string, fn: () -> (), allowed: { string }?)
 	local ok, err = xpcall(fn, function(e)
 		return rt.cleanTrace(debug.traceback(tostring(e), 2))
 	end)
-	local problems = problemsSinceLastCheck()
+	local problems = problemsSinceLastCheck(allowed)
 	if ok and #problems == 0 then
 		passed += 1
 		print("  ok    " .. name)
@@ -285,6 +289,48 @@ step("second player joins after boot; 60 virtual seconds pass", function()
 	rt.run(1)
 	bob = rt.addPlayer("Bob", 1002)
 	rt.run(60)
+end)
+
+-- Clicks the first visible TextButton whose text is `text` in the player's ScreenGui `guiName`.
+local function clickButton(player, guiName: string, text: string)
+	local button = client(player, function()
+		local gui = player.PlayerGui:WaitForChild(guiName, 5)
+		for _, d in gui:GetDescendants() do
+			if d:IsA("TextButton") and d.Text == text then
+				return d
+			end
+		end
+		return nil
+	end)
+	check(button, guiName .. " has no '" .. text .. "' button")
+	rt.click(button)
+	rt.run(0.3)
+end
+
+step("both clients dismiss the title screen (PLAY) and the HUD runs", function()
+	for _, p in { alice, bob } do
+		clickButton(p, "Title", "PLAY")
+		check(not client(p, function()
+			return p.PlayerGui.Title.Enabled
+		end), p.Name .. " title screen still up after PLAY")
+	end
+	rt.run(2)
+	client(alice, function()
+		local texts = {}
+		for _, d in alice.PlayerGui.HUD:GetDescendants() do
+			if d:IsA("TextLabel") then
+				texts[d.Text] = true
+			end
+		end
+		local elevation = math.floor(alice:GetAttribute("ElevationM") or 0)
+		local found = false
+		for text in texts do
+			if string.find(text, "^[%d,]+ m$") and text ~= "0 m" then
+				found = true
+			end
+		end
+		check(found or elevation == 0, "HUD altitude never left its default")
+	end)
 end)
 
 step("characters spawned in the world", function()
@@ -981,8 +1027,6 @@ step("death bypassing the downed state respawns at the last camp", function()
 end)
 
 step("DataStore outage: a joining player retries, then plays read-only", function()
-	-- DataService logs every failed attempt; those warnings are the point of this step.
-	table.insert(ALLOWED_WARNINGS, "^%[DataService%] load Carol failed")
 	rt.dataStoreFailure = "502: API Services rejected request with error. HTTP 503 (Service Unavailable)"
 	local carol = rt.addPlayer("Carol", 1003)
 	runUntil(function()
@@ -998,8 +1042,10 @@ step("DataStore outage: a joining player retries, then plays read-only", functio
 	rt.run(1)
 	rt.removePlayer(carol)
 	rt.run(1)
-	table.remove(ALLOWED_WARNINGS)
-end)
+end, {
+	-- DataService logs every failed attempt; those warnings are the point of this step.
+	"^%[DataService%] load Carol failed",
+})
 
 -- (d) disconnect while carrying, rejoin -----------------------------------------------------------------
 print("== disconnect / rejoin")
