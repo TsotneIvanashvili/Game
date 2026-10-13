@@ -1871,8 +1871,9 @@ function AssetFactory.aFrameTent(at: CFrame, color: Color3, size: Vector3?): (Mo
 	)
 	-- Rolled-back flap under the right skin's front edge.
 	local inward = Vector3.new(-H, -hw, 0).Unit
-	local p1 = Vector3.new(0, H, -hl + 0.1) + inward * 0.4
-	local p2 = Vector3.new(hw, 0, -hl + 0.1) + inward * 0.4
+	-- 0.28 = the rod's radius, so the rolled flap rests on the skin instead of floating.
+	local p1 = Vector3.new(0, H, -hl + 0.1) + inward * 0.28
+	local p2 = Vector3.new(hw, 0, -hl + 0.1) + inward * 0.28
 	rod(
 		model,
 		"RolledFlap",
@@ -2216,19 +2217,10 @@ function AssetFactory.bigTent(at: CFrame, color: Color3, size: Vector3?): (Model
 		fabric,
 		{ shadow = false }
 	)
-	-- Centre poles (players bump into them) and pole tips with pennants above the ridge ends.
-	for _, z in (if L >= 16 then { -L / 4, L / 4 } else { 0 }) do
-		rod(
-			model,
-			"CentrePole",
-			(at * CFrame.new(0, 0, z)).Position,
-			(at * CFrame.new(0, H, z)).Position,
-			0.7,
-			PALETTE.pole,
-			Enum.Material.Wood,
-			{ collide = true, shadow = false }
-		)
-	end
+	-- No centre poles: this is an aluminium frame tent whose rigid ridge beam rests on the gable
+	-- poles, which keeps the floor clear and the view from the door to the back wall open
+	-- (centre poles stood right in front of the equipment banner). Pole tips with pennants
+	-- above the ridge ends.
 	for _, z in { -hl - 0.4, hl + 0.4 } do
 		local top = at * CFrame.new(0, H + 2.6, z)
 		rod(
@@ -2791,7 +2783,7 @@ function AssetFactory.rescueStation(at: CFrame): (Model, CFrame, Vector3)
 		model,
 		"DoorLamp",
 		Vector3.new(0.6, 0.8, 0.6),
-		at * CFrame.new(3.2, base + 6.4, z0 - 0.4),
+		at * CFrame.new(3.2, base + 6.4, z0 - 0.3), -- flush against the wall (half depth 0.3)
 		PALETTE.warmLight,
 		Enum.Material.Neon,
 		deco
