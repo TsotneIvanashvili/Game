@@ -28,10 +28,13 @@ function Mock.new(root: string, options: any?)
 		return M.epoch + M.S.now
 	end
 	function M.log(ctx, kind: string, msg: string)
-		local entry = { t = if M.S then M.S.now else 0, ctx = if ctx then ctx.name else "server", kind = kind, msg = msg }
+		local entry =
+			{ t = if M.S then M.S.now else 0, ctx = if ctx then ctx.name else "server", kind = kind, msg = msg }
 		table.insert(M.logs, entry)
 		if M.echo or kind == "error" then
-			print(string.format("[%7.2f %s] %s%s", entry.t, entry.ctx, if kind == "print" then "" else kind .. ": ", msg))
+			print(
+				string.format("[%7.2f %s] %s%s", entry.t, entry.ctx, if kind == "print" then "" else kind .. ": ", msg)
+			)
 		end
 		if M.onLog then
 			M.onLog(entry)
@@ -276,7 +279,7 @@ function Mock.new(root: string, options: any?)
 				end
 			end, ctx),
 			ctx = ctx,
-			args = table.pack(),
+			args = { n = 0 },
 		})
 		if M.raw(M.players, "CharacterAutoLoads") then
 			S.at(S.now + 0.2, function()

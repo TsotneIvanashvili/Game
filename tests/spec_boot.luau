@@ -168,11 +168,9 @@ step("inject terrain surface from Shared/Logic/TerrainModel", function()
 			if x >= op.minX and x <= op.maxX and z >= op.minZ and z <= op.maxZ then
 				local lo, hi = TerrainModel.interval(op, x, z)
 				if lo and hi and y >= lo and y <= hi then
-					if op.mode == "Fill" then
-						material = op.material
-					elseif op.mode == "Carve" then
+					if op.mode == "Carve" then
 						material = "Air"
-					elseif op.mode == "Replace" and material == op.source then
+					elseif op.mode == "Fill" or (op.mode == "Replace" and material == op.source) then
 						material = op.material
 					end
 				end
@@ -196,7 +194,20 @@ step("server bootstrap builds the world and starts every service", function()
 	check(findLog("^%[World%] terrain ok"), "world terrain not ok: " .. tostring(findLog("^%[World%]")))
 	check(findLog("^%[Server%] 15 services started"), "not every service started")
 	local report = findLog("^%[Report%]") :: string
-	for _, field in { "camps", "checkpoint rings", "sleep spots", "supply crates", "outfitters", "wood", "water", "hazards", "summit", "world parts" } do
+	for _, field in
+		{
+			"camps",
+			"checkpoint rings",
+			"sleep spots",
+			"supply crates",
+			"outfitters",
+			"wood",
+			"water",
+			"hazards",
+			"summit",
+			"world parts",
+		}
+	do
 		local n = tonumber(string.match(report, field .. " (%d+)"))
 		check(n and n > 0, "[Report] " .. field .. " is " .. tostring(n))
 	end
@@ -219,7 +230,10 @@ step("characters spawned in the world", function()
 		check(rt.raw(h, "Health") > 0, p.Name .. " is dead")
 		local pos = rootPos(p)
 		local ground = terrainModel.heightAt(pos.X, pos.Z)
-		check(math.abs(pos.Y - ground) < 30, string.format("%s floating/fallen: y %.1f ground %.1f", p.Name, pos.Y, ground))
+		check(
+			math.abs(pos.Y - ground) < 30,
+			string.format("%s floating/fallen: y %.1f ground %.1f", p.Name, pos.Y, ground)
+		)
 	end
 end)
 
@@ -251,7 +265,21 @@ end)
 
 step("survival attributes are published", function()
 	for _, p in { alice, bob } do
-		for _, name in { "Stamina", "MaxStamina", "Warmth", "TempC", "Hunger", "Thirst", "Oxygen", "ElevationM", "Exertion", "Zone", "Weather" } do
+		for _, name in
+			{
+				"Stamina",
+				"MaxStamina",
+				"Warmth",
+				"TempC",
+				"Hunger",
+				"Thirst",
+				"Oxygen",
+				"ElevationM",
+				"Exertion",
+				"Zone",
+				"Weather",
+			}
+		do
 			local v = attr(p, name)
 			check(v ~= nil, p.Name .. " attribute " .. name .. " missing")
 		end
@@ -656,10 +684,13 @@ step("outfitter panel: switch to a large pack and take a tent", function()
 	local rack = tagged("Outfitter")[1]
 	check(rack, "no outfitter")
 	usePrompt(alice, promptIn(rack, "Change gear"))
-	check(client(alice, function()
-		local panels = alice.PlayerGui:FindFirstChild("Panels")
-		return panels and panels.Enabled
-	end), "outfitter panel did not open on the client")
+	check(
+		client(alice, function()
+			local panels = alice.PlayerGui:FindFirstChild("Panels")
+			return panels and panels.Enabled
+		end),
+		"outfitter panel did not open on the client"
+	)
 	local ok, msg = invoke(alice, "Outfit", "pack_large")
 	check(ok == true, "Outfit pack_large: " .. tostring(msg))
 	ok, msg = invoke(alice, "Outfit", "tent_pack")

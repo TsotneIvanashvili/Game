@@ -283,7 +283,7 @@ return function(M)
 	end
 	M.storeShared = storeShared
 
-	local function coerce(self, spec, key: string, v: any): any
+	local function coerce(spec, key: string, v: any): any
 		local t = spec.type
 		if t == nil then
 			return v
@@ -312,7 +312,15 @@ return function(M)
 			if item then
 				return item
 			end
-			error(fmt("Unable to assign property %s. EnumItem of type %s expected, got %s", key, tostring(spec.enum), if vt == "EnumItem" then tostring(v) else vt), 4)
+			error(
+				fmt(
+					"Unable to assign property %s. EnumItem of type %s expected, got %s",
+					key,
+					tostring(spec.enum),
+					if vt == "EnumItem" then tostring(v) else vt
+				),
+				4
+			)
 		elseif t == "Instance" then
 			if vt == "Instance" then
 				if spec.class and not v._cls.isa[spec.class] then
@@ -357,7 +365,14 @@ return function(M)
 				return g(self)
 			end
 			if spec.writeOnly then
-				error(fmt("%s is a callback member of %s; you can only set the callback value, get is not available", key, cls.name), 2)
+				error(
+					fmt(
+						"%s is a callback member of %s; you can only set the callback value, get is not available",
+						key,
+						cls.name
+					),
+					2
+				)
 			end
 			return raw(self, key)
 		end
@@ -386,10 +401,7 @@ return function(M)
 		if spec.readonly then
 			error(fmt("Unable to assign property %s. Property is read only", tostring(key)), 2)
 		end
-		if rawget(self, "_destroyed") and key ~= "Parent" and cls.isa.BasePart == nil then
-			-- allowed in Roblox; nothing to check
-		end
-		value = coerce(self, spec, key, value)
+		value = coerce(spec, key, value)
 		if spec.set then
 			spec.set(self, value)
 		else
@@ -551,10 +563,14 @@ return function(M)
 		end
 		if newParent ~= nil then
 			if newParent == self or isAncestor(self, newParent) then
-				error(fmt("Attempt to set parent of %s to %s would result in circular reference", fullName(self), fullName(newParent)), 3)
-			end
-			if rawget(newParent, "_locked") and rawget(newParent, "_destroyed") then
-				-- Parenting into a destroyed instance is allowed by the engine; it just never shows up.
+				error(
+					fmt(
+						"Attempt to set parent of %s to %s would result in circular reference",
+						fullName(self),
+						fullName(newParent)
+					),
+					3
+				)
 			end
 		end
 		if self._cls.service and rawget(self, "_parent") ~= nil then
@@ -829,7 +845,7 @@ return function(M)
 		else
 			S.at(S.now + 5, function()
 				if S.isParked(co, tok) then
-					M.warnAs(ctx, fmt('Infinite yield possible on \'%s:WaitForChild("%s")\'', where, name))
+					M.warnAs(ctx, fmt("Infinite yield possible on '%s:WaitForChild(\"%s\")'", where, name))
 				end
 			end)
 		end
@@ -894,7 +910,10 @@ return function(M)
 		end
 		local map = {}
 		local function copy(src)
-			local dst = M.create(src._cls.name, { shared = rawget(src, "_owner") == nil and not (S.current and S.current.isClient) })
+			local dst = M.create(
+				src._cls.name,
+				{ shared = rawget(src, "_owner") == nil and not (S.current and S.current.isClient) }
+			)
 			map[src] = dst
 			for k, v in src._p do
 				if k ~= "Parent" then
@@ -974,7 +993,10 @@ return function(M)
 			error("Argument 1 missing or nil", 2)
 		end
 		if #name > 100 or not string.match(name, "^[%w_]+$") or string.sub(name, 1, 3) == "RBX" then
-			error(fmt("Attribute name '%s' is invalid (alphanumeric and underscore only, max 100, no RBX prefix)", name), 2)
+			error(
+				fmt("Attribute name '%s' is invalid (alphanumeric and underscore only, max 100, no RBX prefix)", name),
+				2
+			)
 		end
 		if value ~= nil and not ATTR_TYPES[M.typeof(value)] then
 			error(fmt("%s is not a supported attribute type", M.typeof(value)), 2)
@@ -1079,9 +1101,15 @@ return function(M)
 			ClassName = M.COMPUTED(function(self)
 				return self._cls.name
 			end),
-			Parent = { __spec = true, type = "Instance", nilable = true, get = function(self)
-				return rawget(self, "_parent")
-			end, set = parentSetter },
+			Parent = {
+				__spec = true,
+				type = "Instance",
+				nilable = true,
+				get = function(self)
+					return rawget(self, "_parent")
+				end,
+				set = parentSetter,
+			},
 			Archivable = true,
 			UniqueId = M.COMPUTED(function(self)
 				return tostring(self._id)

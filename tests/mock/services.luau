@@ -38,7 +38,15 @@ return function(M)
 	local function encodeString(s: string): string
 		return '"'
 			.. string.gsub(s, '[%c"\\]', function(ch)
-				local map = { ['"'] = '\\"', ["\\"] = "\\\\", ["\n"] = "\\n", ["\r"] = "\\r", ["\t"] = "\\t", ["\b"] = "\\b", ["\f"] = "\\f" }
+				local map = {
+					['"'] = '\\"',
+					["\\"] = "\\\\",
+					["\n"] = "\\n",
+					["\r"] = "\\r",
+					["\t"] = "\\t",
+					["\b"] = "\\b",
+					["\f"] = "\\f",
+				}
 				return map[ch] or fmt("\\u%04x", string.byte(ch))
 			end)
 			.. '"'
@@ -86,7 +94,10 @@ return function(M)
 					out = "[" .. table.concat(items, ",") .. "]"
 				else
 					if hasOther or (n > 0 and hasString) then
-						error(fmt("%s: can't convert mixed or non-string-keyed table to JSON (at %s)", context, path), 0)
+						error(
+							fmt("%s: can't convert mixed or non-string-keyed table to JSON (at %s)", context, path),
+							0
+						)
 					end
 					local keys = {}
 					for k in v do
@@ -131,7 +142,8 @@ return function(M)
 					break
 				elseif ch == "\\" then
 					local e = string.sub(s, pos + 1, pos + 1)
-					local map = { n = "\n", r = "\r", t = "\t", b = "\b", f = "\f", ['"'] = '"', ["\\"] = "\\", ["/"] = "/" }
+					local map =
+						{ n = "\n", r = "\r", t = "\t", b = "\b", f = "\f", ['"'] = '"', ["\\"] = "\\", ["/"] = "/" }
 					if e == "u" then
 						table.insert(out, utf8.char(tonumber(string.sub(s, pos + 2, pos + 5), 16) or 63))
 						pos += 6
@@ -563,7 +575,15 @@ return function(M)
 			Run = noop,
 			Stop = noop,
 		},
-		events = { "Heartbeat", "Stepped", "RenderStepped", "PreRender", "PreSimulation", "PostSimulation", "PreAnimation" },
+		events = {
+			"Heartbeat",
+			"Stepped",
+			"RenderStepped",
+			"PreRender",
+			"PreSimulation",
+			"PostSimulation",
+			"PreAnimation",
+		},
 	})
 
 	-- Players / Player / character rig ------------------------------------------------------------------
@@ -592,7 +612,10 @@ return function(M)
 			end,
 			GetPlayerByUserId = function(self, userId)
 				if type(userId) ~= "number" then
-					error("invalid argument #1 to 'GetPlayerByUserId' (number expected, got " .. M.typeof(userId) .. ")", 2)
+					error(
+						"invalid argument #1 to 'GetPlayerByUserId' (number expected, got " .. M.typeof(userId) .. ")",
+						2
+					)
 				end
 				for _, p in self:GetPlayers() do
 					if raw(p, "UserId") == userId then
@@ -744,7 +767,12 @@ return function(M)
 			end,
 			RequestStreamAroundAsync = function(_, pos, timeout)
 				if M.typeof(pos) ~= "Vector3" then
-					error("invalid argument #1 to 'RequestStreamAroundAsync' (Vector3 expected, got " .. M.typeof(pos) .. ")", 2)
+					error(
+						"invalid argument #1 to 'RequestStreamAroundAsync' (Vector3 expected, got "
+							.. M.typeof(pos)
+							.. ")",
+						2
+					)
 				end
 				if timeout ~= nil and type(timeout) ~= "number" then
 					error("invalid argument #2 to 'RequestStreamAroundAsync' (number expected)", 2)
@@ -762,7 +790,14 @@ return function(M)
 			end,
 			SetSuperSafeChat = noop,
 		},
-		events = { "CharacterAdded", "CharacterRemoving", "CharacterAppearanceLoaded", "Chatted", "Idled", "OnTeleport" },
+		events = {
+			"CharacterAdded",
+			"CharacterRemoving",
+			"CharacterAppearanceLoaded",
+			"Chatted",
+			"Idled",
+			"OnTeleport",
+		},
 	})
 
 	-- R15-like rig. Sizes match the classic blocky R15 avatar; HipHeight 2 matches the legs, so
@@ -888,7 +923,12 @@ return function(M)
 		M.setParent(humanoid, model)
 		model._p.PrimaryPart = parts.HumanoidRootPart
 		-- Two accessories so hat/hair code paths have something to work on.
-		for _, acc in { { "Hair", Enum.AccessoryType.Hair, "HairAttachment" }, { "Hat", Enum.AccessoryType.Hat, "HatAttachment" } } do
+		for _, acc in
+			{
+				{ "Hair", Enum.AccessoryType.Hair, "HairAttachment" },
+				{ "Hat", Enum.AccessoryType.Hat, "HatAttachment" },
+			}
+		do
 			local accessory = M.create("Accessory", { shared = true })
 			accessory._p.Name = acc[1] .. "Accessory"
 			accessory._p.AccessoryType = acc[2]
@@ -996,7 +1036,11 @@ return function(M)
 			return
 		end
 		S.at(S.now + raw(M.players, "RespawnTime"), function()
-			if player._p.Character == character and rawget(player, "_parent") and raw(M.players, "CharacterAutoLoads") then
+			if
+				player._p.Character == character
+				and rawget(player, "_parent")
+				and raw(M.players, "CharacterAutoLoads")
+			then
 				local prev = S.current
 				S.current = M.serverCtx
 				M.loadCharacter(player)
@@ -1016,9 +1060,14 @@ return function(M)
 
 	-- Containers --------------------------------------------------------------------------------------
 	service("ReplicatedStorage", {})
-	service("ReplicatedFirst", { methods = { RemoveDefaultLoadingScreen = noop, IsFinishedReplicating = function()
-		return true
-	end } })
+	service("ReplicatedFirst", {
+		methods = {
+			RemoveDefaultLoadingScreen = noop,
+			IsFinishedReplicating = function()
+				return true
+			end,
+		},
+	})
 	service("ServerScriptService", { props = { LoadStringEnabled = RO(false) } })
 	service("ServerStorage", {})
 	service("StarterPack", {})
@@ -1045,7 +1094,12 @@ return function(M)
 	class("StarterCharacterScripts", "Instance", { notCreatable = true })
 
 	service("StarterGui", {
-		props = { ShowDevelopmentGui = true, ResetPlayerGuiOnSpawn = true, ScreenOrientation = ANY(nil), VirtualCursorMode = ANY(nil) },
+		props = {
+			ShowDevelopmentGui = true,
+			ResetPlayerGuiOnSpawn = true,
+			ScreenOrientation = ANY(nil),
+			VirtualCursorMode = ANY(nil),
+		},
 		methods = {
 			SetCore = function(_, name, _value)
 				clientOnly("SetCore")
@@ -1062,7 +1116,11 @@ return function(M)
 			end,
 			SetCoreGuiEnabled = function(_, coreType, enabled)
 				clientOnly("SetCoreGuiEnabled")
-				if M.typeof(coreType) ~= "EnumItem" or coreType.EnumType ~= Enum.CoreGuiType or type(enabled) ~= "boolean" then
+				if
+					M.typeof(coreType) ~= "EnumItem"
+					or coreType.EnumType ~= Enum.CoreGuiType
+					or type(enabled) ~= "boolean"
+				then
 					error("invalid arguments to 'SetCoreGuiEnabled' (CoreGuiType, bool expected)", 2)
 				end
 				ctxOf().coreGui[coreType] = enabled
@@ -1146,7 +1204,19 @@ return function(M)
 	})
 
 	-- TweenService ------------------------------------------------------------------------------------
-	local TWEENABLE = { number = true, boolean = true, Vector3 = true, Vector2 = true, CFrame = true, Color3 = true, UDim2 = true, UDim = true, Rect = true, NumberRange = true, EnumItem = false }
+	local TWEENABLE = {
+		number = true,
+		boolean = true,
+		Vector3 = true,
+		Vector2 = true,
+		CFrame = true,
+		Color3 = true,
+		UDim2 = true,
+		UDim = true,
+		Rect = true,
+		NumberRange = true,
+		EnumItem = false,
+	}
 	class("TweenBase", "Instance", {
 		abstract = true,
 		props = { PlaybackState = RO(Enum.PlaybackState.Begin) },
@@ -1289,15 +1359,33 @@ return function(M)
 				for k, v in goals do
 					local spec = inst._cls.props[k]
 					if not spec then
-						error(fmt("TweenService:Create no property named '%s' for object '%s'", tostring(k), inst._p.Name), 2)
+						error(
+							fmt("TweenService:Create no property named '%s' for object '%s'", tostring(k), inst._p.Name),
+							2
+						)
 					end
 					local current = inst[k]
 					local ct, vt = M.typeof(current), M.typeof(v)
 					if not TWEENABLE[ct] then
-						error(fmt("TweenService:Create property named '%s' on object '%s' is not a data type that can be tweened", k, inst._p.Name), 2)
+						error(
+							fmt(
+								"TweenService:Create property named '%s' on object '%s' is not a data type that can be tweened",
+								k,
+								inst._p.Name
+							),
+							2
+						)
 					end
 					if ct ~= vt then
-						error(fmt("TweenService:Create property named '%s' cannot be tweened due to type mismatch (property is a '%s', but given type is '%s')", k, ct, vt), 2)
+						error(
+							fmt(
+								"TweenService:Create property named '%s' cannot be tweened due to type mismatch (property is a '%s', but given type is '%s')",
+								k,
+								ct,
+								vt
+							),
+							2
+						)
 					end
 				end
 				local tween = M.create("Tween")
@@ -1309,7 +1397,7 @@ return function(M)
 			GetValue = function(_, alpha, style, direction)
 				return ease({ EasingStyle = style, EasingDirection = direction }, alpha)
 			end,
-			SmoothDamp = function(_, current, target, velocity)
+			SmoothDamp = function(_, _current, target, velocity)
 				return target, velocity
 			end,
 		},
@@ -1404,16 +1492,21 @@ return function(M)
 	class("DataStore", "GlobalDataStore", { notCreatable = true })
 	class("OrderedDataStore", "GlobalDataStore", {
 		notCreatable = true,
-		methods = { GetSortedAsync = function()
-			error("mock: OrderedDataStore:GetSortedAsync is not emulated", 2)
-		end },
+		methods = {
+			GetSortedAsync = function()
+				error("mock: OrderedDataStore:GetSortedAsync is not emulated", 2)
+			end,
+		},
 	})
 	service("DataStoreService", {
 		methods = {
 			GetDataStore = function(_, name, scope)
 				serverOnly("GetDataStore")
 				if type(name) ~= "string" or #name == 0 or #name > 50 then
-					error("invalid argument #1 to 'GetDataStore' (non-empty string of at most 50 characters expected)", 2)
+					error(
+						"invalid argument #1 to 'GetDataStore' (non-empty string of at most 50 characters expected)",
+						2
+					)
 				end
 				local id = name .. "/" .. tostring(scope or "global")
 				local ds = M.dataStores[id]
@@ -1453,7 +1546,14 @@ return function(M)
 			end,
 			GenerateGUID = function(_, wrap)
 				guidCounter += 1
-				local hex = fmt("%08X-%04X-%04X-%04X-%012X", guidCounter, 0x4000, 0x8000, guidCounter % 65536, guidCounter * 7919)
+				local hex = fmt(
+					"%08X-%04X-%04X-%04X-%012X",
+					guidCounter,
+					0x4000,
+					0x8000,
+					guidCounter % 65536,
+					guidCounter * 7919
+				)
 				if wrap == false then
 					return hex
 				end
@@ -1488,9 +1588,11 @@ return function(M)
 				return T.Vector2.new(#(params.Text or "") * (params.Size or 14) * 0.5, params.Size or 14)
 			end,
 			FilterStringAsync = function(_, text)
-				return { GetNonChatStringForBroadcastAsync = function()
-					return text
-				end }
+				return {
+					GetNonChatStringForBroadcastAsync = function()
+						return text
+					end,
+				}
 			end,
 		},
 	})
@@ -1604,12 +1706,27 @@ return function(M)
 					error("invalid argument #2 to 'BindAction' (function expected)", 3)
 				end
 				for i, input in inputs do
-					if M.typeof(input) ~= "EnumItem" or (input.EnumType ~= Enum.KeyCode and input.EnumType ~= Enum.UserInputType and input.EnumType ~= Enum.PlayerActions) then
-						error(fmt("invalid argument #%d to 'BindAction' (KeyCode/UserInputType expected, got %s)", i + 3, M.typeof(input)), 3)
+					if
+						M.typeof(input) ~= "EnumItem"
+						or (
+							input.EnumType ~= Enum.KeyCode
+							and input.EnumType ~= Enum.UserInputType
+							and input.EnumType ~= Enum.PlayerActions
+						)
+					then
+						error(
+							fmt(
+								"invalid argument #%d to 'BindAction' (KeyCode/UserInputType expected, got %s)",
+								i + 3,
+								M.typeof(input)
+							),
+							3
+						)
 					end
 				end
 				local ctx = ctxOf()
-				ctx.actions[name] = { fn = fn, touch = touch, priority = priority, inputs = inputs, order = S.frame + #inputs * 0 }
+				ctx.actions[name] =
+					{ fn = fn, touch = touch, priority = priority, inputs = inputs, order = S.frame + #inputs * 0 }
 				ctx.actionSeq = (ctx.actionSeq or 0) + 1
 				ctx.actions[name].seq = ctx.actionSeq
 			end
@@ -1631,7 +1748,9 @@ return function(M)
 				end,
 				GetBoundActionInfo = function(_, name)
 					local a = ctxOf().actions[name]
-					return if a then { priorityLevel = a.priority, inputTypes = a.inputs, createTouchButton = a.touch } else {}
+					return if a
+						then { priorityLevel = a.priority, inputTypes = a.inputs, createTouchButton = a.touch }
+						else {}
 				end,
 				GetAllBoundActionInfo = function()
 					local out = {}
@@ -1660,10 +1779,24 @@ return function(M)
 
 	service("ProximityPromptService", {
 		props = { Enabled = true, MaxPromptsVisible = 16, MaxIndicatorsVisible = 16 },
-		events = { "PromptTriggered", "PromptTriggerEnded", "PromptShown", "PromptHidden", "PromptButtonHoldBegan", "PromptButtonHoldEnded" },
+		events = {
+			"PromptTriggered",
+			"PromptTriggerEnded",
+			"PromptShown",
+			"PromptHidden",
+			"PromptButtonHoldBegan",
+			"PromptButtonHoldEnded",
+		},
 	})
 	service("SoundService", {
-		props = { AmbientReverb = ANY(nil), DistanceFactor = 3.33, DopplerScale = 1, RolloffScale = 1, RespectFilteringEnabled = true, VolumetricAudio = ANY(nil) },
+		props = {
+			AmbientReverb = ANY(nil),
+			DistanceFactor = 3.33,
+			DopplerScale = 1,
+			RolloffScale = 1,
+			RespectFilteringEnabled = true,
+			VolumetricAudio = ANY(nil),
+		},
 		methods = {
 			PlayLocalSound = function(_, sound)
 				if not (M.isInstance(sound) and sound:IsA("Sound")) then
@@ -1765,37 +1898,74 @@ return function(M)
 	})
 	service("TeleportService", { methods = { Teleport = noop, TeleportAsync = noop } })
 	service("GuiService", {
-		props = { MenuIsOpen = RO(false), AutoSelectGuiEnabled = true, SelectedObject = N("Instance"), TouchControlsEnabled = true },
-		methods = { GetGuiInset = function()
-			return T.Vector2.new(0, 36), T.Vector2.zero
-		end, IsTenFootInterface = function()
-			return false
-		end },
+		props = {
+			MenuIsOpen = RO(false),
+			AutoSelectGuiEnabled = true,
+			SelectedObject = N("Instance"),
+			TouchControlsEnabled = true,
+		},
+		methods = {
+			GetGuiInset = function()
+				return T.Vector2.new(0, 36), T.Vector2.zero
+			end,
+			IsTenFootInterface = function()
+				return false
+			end,
+		},
 		events = { "MenuOpened", "MenuClosed" },
 	})
 	service("LocalizationService", { props = { RobloxLocaleId = RO("en-us"), SystemLocaleId = RO("en-us") } })
 	service("Chat", { props = { BubbleChatEnabled = false, LoadDefaultChat = true } })
 	service("TextChatService", { props = { ChatVersion = ANY(nil) } })
-	service("HapticService", { methods = { IsVibrationSupported = function()
-		return false
-	end, SetMotor = noop } })
+	service(
+		"HapticService",
+		{ methods = {
+			IsVibrationSupported = function()
+				return false
+			end,
+			SetMotor = noop,
+		} }
+	)
 	service("VRService", { props = { VREnabled = RO(false) } })
-	service("Stats", { methods = { GetTotalMemoryUsageMb = function()
-		return 0
-	end } })
-	service("PolicyService", { methods = { GetPolicyInfoForPlayerAsync = function()
-		return { AreAdsAllowed = false, ArePaidRandomItemsRestricted = false }
-	end } })
-	service("MessagingService", { methods = { PublishAsync = noop, SubscribeAsync = function()
-		return { Disconnect = noop }
-	end } })
+	service("Stats", { methods = {
+		GetTotalMemoryUsageMb = function()
+			return 0
+		end,
+	} })
+	service("PolicyService", {
+		methods = {
+			GetPolicyInfoForPlayerAsync = function()
+				return { AreAdsAllowed = false, ArePaidRandomItemsRestricted = false }
+			end,
+		},
+	})
+	service("MessagingService", {
+		methods = {
+			PublishAsync = noop,
+			SubscribeAsync = function()
+				return { Disconnect = noop }
+			end,
+		},
+	})
 	service("AssetService", {})
-	service("ContentProvider", { props = { RequestQueueSize = RO(0) }, methods = { PreloadAsync = function()
-		task.wait(0)
-	end } })
+	service(
+		"ContentProvider",
+		{ props = { RequestQueueSize = RO(0) }, methods = {
+			PreloadAsync = function()
+				task.wait(0)
+			end,
+		} }
+	)
 	service("InsertService", {})
 	service("SocialService", {})
 	service("GroupService", {})
 	service("UserService", {})
-	service("AnalyticsService", { methods = { LogCustomEvent = noop, LogEconomyEvent = noop, LogProgressionEvent = noop, LogOnboardingFunnelStepEvent = noop } })
+	service("AnalyticsService", {
+		methods = {
+			LogCustomEvent = noop,
+			LogEconomyEvent = noop,
+			LogProgressionEvent = noop,
+			LogOnboardingFunnelStepEvent = noop,
+		},
+	})
 end

@@ -64,7 +64,15 @@ return function(M)
 			if target == nil or replicatesTo(v, target) then
 				return v
 			end
-			note(fmt("%s: Instance %s at %s arrived as nil (not replicated to %s)", label, M.fullName(v), path, target.name))
+			note(
+				fmt(
+					"%s: Instance %s at %s arrived as nil (not replicated to %s)",
+					label,
+					M.fullName(v),
+					path,
+					target.name
+				)
+			)
 			return nil
 		elseif t == "table" then
 			if seen[v] then
@@ -137,14 +145,15 @@ return function(M)
 				return true
 			end
 		end
-		return #sig._waiters > 0 and (function()
-			for _, w in sig._waiters do
-				if w.ctx == ctx then
-					return true
+		return #sig._waiters > 0
+			and (function()
+				for _, w in sig._waiters do
+					if w.ctx == ctx then
+						return true
+					end
 				end
-			end
-			return false
-		end)()
+				return false
+			end)()
 	end
 	local function onlyCtx(ctx)
 		return function(c)
@@ -176,7 +185,14 @@ return function(M)
 			local q = queueFor(remote, ctx)
 			table.insert(q, args)
 			if #q == 257 then
-				M.warnAs(ctx, fmt("Remote event invocation queue exhausted for %s; did you forget to implement %s?", M.fullName(remote), eventName))
+				M.warnAs(
+					ctx,
+					fmt(
+						"Remote event invocation queue exhausted for %s; did you forget to implement %s?",
+						M.fullName(remote),
+						eventName
+					)
+				)
 			end
 		end
 	end
@@ -276,14 +292,14 @@ return function(M)
 					S.wake(co, tok, table.unpack(reply, 1, reply.n))
 				end
 			end, targetCtx)
-			S.defer({ co = handler, ctx = targetCtx, args = table.pack() })
+			S.defer({ co = handler, ctx = targetCtx, args = { n = 0 } })
 		end
 		if M.latency > 0 then
 			S.at(S.now + M.latency, function()
-				S.defer({ co = S.newThread(attempt, targetCtx), ctx = targetCtx, args = table.pack() })
+				S.defer({ co = S.newThread(attempt, targetCtx), ctx = targetCtx, args = { n = 0 } })
 			end)
 		else
-			S.defer({ co = S.newThread(attempt, targetCtx), ctx = targetCtx, args = table.pack() })
+			S.defer({ co = S.newThread(attempt, targetCtx), ctx = targetCtx, args = { n = 0 } })
 		end
 		local ok, result = coroutine.yield()
 		if not ok then

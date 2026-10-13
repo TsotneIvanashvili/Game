@@ -109,7 +109,7 @@ return function(M)
 				return rawget(self, "_typeName") == typeName
 			end
 		end
-		error(tostring(k) .. " is not a valid member of \"" .. tostring(item) .. "\"", 2)
+		error(tostring(k) .. ' is not a valid member of "' .. tostring(item) .. '"', 2)
 	end
 	EnumItemMt.__newindex = function(_, k)
 		error(tostring(k) .. " cannot be assigned to", 2)
@@ -149,10 +149,10 @@ return function(M)
 			end
 		end
 		if type(k) ~= "string" then
-			error(tostring(k) .. " is not a valid member of \"Enum." .. rawget(e, "_name") .. "\"", 2)
+			error(tostring(k) .. ' is not a valid member of "Enum.' .. rawget(e, "_name") .. '"', 2)
 		end
 		if rawget(e, "_strict") then
-			error(k .. " is not a valid member of \"Enum." .. rawget(e, "_name") .. "\"", 2)
+			error(k .. ' is not a valid member of "Enum.' .. rawget(e, "_name") .. '"', 2)
 		end
 		return addItem(e, k)
 	end

@@ -9,7 +9,7 @@ return function(M)
 	local N, RO, ANY, COMPUTED = M.N, M.RO, M.ANY, M.COMPUTED
 	local class = M.class
 	local raw, store = M.raw, M.store
-	local v3, cf = M.v3, M.cf
+	local v3 = M.v3
 	local V0 = v3(0, 0, 0)
 	local ID = T.CFrame.identity
 	local fmt = string.format
@@ -64,7 +64,10 @@ return function(M)
 				return v3(deg(x), deg(y), deg(z))
 			end, function(self, v)
 				local p = raw(self, "CFrame").Position
-				partCFrameSet(self, T.CFrame.new(p) * T.CFrame.fromOrientation(math.rad(v.X), math.rad(v.Y), math.rad(v.Z)))
+				partCFrameSet(
+					self,
+					T.CFrame.new(p) * T.CFrame.fromOrientation(math.rad(v.X), math.rad(v.Y), math.rad(v.Z))
+				)
 			end, "Vector3"),
 			Rotation = COMPUTED(function(self)
 				local x, y, z = raw(self, "CFrame"):ToEulerAnglesXYZ()
@@ -141,7 +144,10 @@ return function(M)
 					error("invalid argument #1 to 'SetNetworkOwner' (Player expected)", 2)
 				end
 				if raw(self, "Anchored") then
-					error("Network Ownership API cannot be called on Anchored parts or parts welded to Anchored parts.", 2)
+					error(
+						"Network Ownership API cannot be called on Anchored parts or parts welded to Anchored parts.",
+						2
+					)
 				end
 				if not self:IsDescendantOf(M.workspace) then
 					error("Can only call Network Ownership API on a part that is descendant of Workspace", 2)
@@ -154,7 +160,10 @@ return function(M)
 			end,
 			SetNetworkOwnershipAuto = function(self)
 				if raw(self, "Anchored") then
-					error("Network Ownership API cannot be called on Anchored parts or parts welded to Anchored parts.", 2)
+					error(
+						"Network Ownership API cannot be called on Anchored parts or parts welded to Anchored parts.",
+						2
+					)
 				end
 				rawset(self, "_netOwner", nil)
 			end,
@@ -267,7 +276,12 @@ return function(M)
 				M.terrainOp(self, "FillBall", center, radius, material)
 			end,
 			FillCylinder = function(self, frame, height, radius, material)
-				if M.typeof(frame) ~= "CFrame" or type(height) ~= "number" or type(radius) ~= "number" or M.typeof(material) ~= "EnumItem" then
+				if
+					M.typeof(frame) ~= "CFrame"
+					or type(height) ~= "number"
+					or type(radius) ~= "number"
+					or M.typeof(material) ~= "EnumItem"
+				then
 					error("invalid arguments to 'FillCylinder' (CFrame, number, number, Material expected)", 2)
 				end
 				M.terrainOp(self, "FillCylinder", frame, height, radius, material)
@@ -279,14 +293,21 @@ return function(M)
 				M.terrainOp(self, "FillWedge", frame, size, material)
 			end,
 			FillRegion = function(self, region, resolution, material)
-				if M.typeof(region) ~= "Region3" or type(resolution) ~= "number" or M.typeof(material) ~= "EnumItem" then
+				if
+					M.typeof(region) ~= "Region3"
+					or type(resolution) ~= "number"
+					or M.typeof(material) ~= "EnumItem"
+				then
 					error("invalid arguments to 'FillRegion'", 2)
 				end
 				M.terrainOp(self, "FillRegion", region, resolution, material)
 			end,
 			ReplaceMaterial = function(self, region, resolution, source, target)
 				if M.typeof(region) ~= "Region3" then
-					error("invalid argument #1 to 'ReplaceMaterial' (Region3 expected, got " .. M.typeof(region) .. ")", 2)
+					error(
+						"invalid argument #1 to 'ReplaceMaterial' (Region3 expected, got " .. M.typeof(region) .. ")",
+						2
+					)
 				end
 				if resolution ~= 4 then
 					error("ReplaceMaterial: resolution must be 4", 2)
@@ -355,7 +376,10 @@ return function(M)
 			SetPrimaryPartCFrame = function(self, target)
 				local pp = raw(self, "PrimaryPart")
 				if not pp then
-					error("Model:SetPrimaryPartCFrame() failed because no PrimaryPart has been set, or the PrimaryPart no longer exists.", 2)
+					error(
+						"Model:SetPrimaryPartCFrame() failed because no PrimaryPart has been set, or the PrimaryPart no longer exists.",
+						2
+					)
 				end
 				M.pivotTo(self, target * raw(pp, "PivotOffset"))
 			end,
@@ -397,7 +421,12 @@ return function(M)
 				local x, y, z = raw(self, "CFrame"):ToOrientation()
 				return v3(deg(x), deg(y), deg(z))
 			end, function(self, v)
-				store(self, "CFrame", T.CFrame.new(raw(self, "CFrame").Position) * T.CFrame.fromOrientation(math.rad(v.X), math.rad(v.Y), math.rad(v.Z)))
+				store(
+					self,
+					"CFrame",
+					T.CFrame.new(raw(self, "CFrame").Position)
+						* T.CFrame.fromOrientation(math.rad(v.X), math.rad(v.Y), math.rad(v.Z))
+				)
 			end, "Vector3"),
 			Axis = COMPUTED(function(self)
 				return raw(self, "CFrame").RightVector
@@ -481,17 +510,83 @@ return function(M)
 		},
 	})
 	class("RopeConstraint", "Constraint", {
-		props = { Length = 5, Thickness = 0.1, Restitution = 0, WinchEnabled = false, WinchForce = 10000, WinchSpeed = 2, WinchTarget = 5, WinchResponsiveness = 45, CurrentDistance = RO(0) },
+		props = {
+			Length = 5,
+			Thickness = 0.1,
+			Restitution = 0,
+			WinchEnabled = false,
+			WinchForce = 10000,
+			WinchSpeed = 2,
+			WinchTarget = 5,
+			WinchResponsiveness = 45,
+			CurrentDistance = RO(0),
+		},
 	})
-	class("RodConstraint", "Constraint", { props = { Length = 5, Thickness = 0.1, LimitsEnabled = false, LimitAngle0 = 90, LimitAngle1 = 90, CurrentDistance = RO(0) } })
+	class("RodConstraint", "Constraint", {
+		props = {
+			Length = 5,
+			Thickness = 0.1,
+			LimitsEnabled = false,
+			LimitAngle0 = 90,
+			LimitAngle1 = 90,
+			CurrentDistance = RO(0),
+		},
+	})
 	class("SpringConstraint", "Constraint", {
-		props = { Coils = 3, Damping = 0, FreeLength = 1, LimitsEnabled = false, MaxForce = math.huge, MaxLength = 5, MinLength = 0, Radius = 0.4, Stiffness = 0, Thickness = 0.1, CurrentLength = RO(0) },
+		props = {
+			Coils = 3,
+			Damping = 0,
+			FreeLength = 1,
+			LimitsEnabled = false,
+			MaxForce = math.huge,
+			MaxLength = 5,
+			MinLength = 0,
+			Radius = 0.4,
+			Stiffness = 0,
+			Thickness = 0.1,
+			CurrentLength = RO(0),
+		},
 	})
-	class("BallSocketConstraint", "Constraint", { props = { LimitsEnabled = false, UpperAngle = 45, TwistLimitsEnabled = false, TwistLowerAngle = -45, TwistUpperAngle = 45, Restitution = 0, MaxFrictionTorque = 0, Radius = 0.15 } })
+	class("BallSocketConstraint", "Constraint", {
+		props = {
+			LimitsEnabled = false,
+			UpperAngle = 45,
+			TwistLimitsEnabled = false,
+			TwistLowerAngle = -45,
+			TwistUpperAngle = 45,
+			Restitution = 0,
+			MaxFrictionTorque = 0,
+			Radius = 0.15,
+		},
+	})
 	class("HingeConstraint", "Constraint", {
-		props = { ActuatorType = ANY(nil), LimitsEnabled = false, LowerAngle = -45, UpperAngle = 45, AngularVelocity = 0, AngularSpeed = 0, MotorMaxTorque = 0, ServoMaxTorque = 0, TargetAngle = 0, Restitution = 0, CurrentAngle = RO(0) },
+		props = {
+			ActuatorType = ANY(nil),
+			LimitsEnabled = false,
+			LowerAngle = -45,
+			UpperAngle = 45,
+			AngularVelocity = 0,
+			AngularSpeed = 0,
+			MotorMaxTorque = 0,
+			ServoMaxTorque = 0,
+			TargetAngle = 0,
+			Restitution = 0,
+			CurrentAngle = RO(0),
+		},
 	})
-	class("PrismaticConstraint", "Constraint", { props = { ActuatorType = ANY(nil), LimitsEnabled = false, LowerLimit = 0, UpperLimit = 5, Velocity = 0, Speed = 0, TargetPosition = 0, ServoMaxForce = 0, MotorMaxForce = 0 } })
+	class("PrismaticConstraint", "Constraint", {
+		props = {
+			ActuatorType = ANY(nil),
+			LimitsEnabled = false,
+			LowerLimit = 0,
+			UpperLimit = 5,
+			Velocity = 0,
+			Speed = 0,
+			TargetPosition = 0,
+			ServoMaxForce = 0,
+			MotorMaxForce = 0,
+		},
+	})
 	class("LinearVelocity", "Constraint", {
 		props = {
 			VectorVelocity = V0,
@@ -505,10 +600,25 @@ return function(M)
 			ForceLimitMode = Enum.ForceLimitMode.Magnitude,
 		},
 	})
-	class("AngularVelocity", "Constraint", { props = { AngularVelocity = V0, MaxTorque = 0, RelativeTo = Enum.ActuatorRelativeTo.World, ReactionTorqueEnabled = false } })
-	class("VectorForce", "Constraint", { props = { Force = V0, RelativeTo = Enum.ActuatorRelativeTo.Attachment0, ApplyAtCenterOfMass = false } })
+	class("AngularVelocity", "Constraint", {
+		props = {
+			AngularVelocity = V0,
+			MaxTorque = 0,
+			RelativeTo = Enum.ActuatorRelativeTo.World,
+			ReactionTorqueEnabled = false,
+		},
+	})
+	class(
+		"VectorForce",
+		"Constraint",
+		{ props = { Force = V0, RelativeTo = Enum.ActuatorRelativeTo.Attachment0, ApplyAtCenterOfMass = false } }
+	)
 	class("Torque", "Constraint", { props = { Torque = V0, RelativeTo = Enum.ActuatorRelativeTo.Attachment0 } })
-	class("NoCollisionConstraint", "Instance", { props = { Enabled = true, Part0 = N("Instance", "BasePart"), Part1 = N("Instance", "BasePart") } })
+	class(
+		"NoCollisionConstraint",
+		"Instance",
+		{ props = { Enabled = true, Part0 = N("Instance", "BasePart"), Part1 = N("Instance", "BasePart") } }
+	)
 
 	class("JointInstance", "Instance", {
 		abstract = true,
@@ -526,7 +636,11 @@ return function(M)
 	class("Weld", "JointInstance", {})
 	class("ManualWeld", "JointInstance", {})
 	class("Snap", "JointInstance", {})
-	class("Motor6D", "JointInstance", { props = { Transform = ID, CurrentAngle = 0, DesiredAngle = 0, MaxVelocity = 0 } })
+	class(
+		"Motor6D",
+		"JointInstance",
+		{ props = { Transform = ID, CurrentAngle = 0, DesiredAngle = 0, MaxVelocity = 0 } }
+	)
 	class("Motor", "JointInstance", { props = { CurrentAngle = 0, DesiredAngle = 0, MaxVelocity = 0 } })
 	class("WeldConstraint", "Instance", {
 		props = {
@@ -713,7 +827,16 @@ return function(M)
 			"AnimationPlayed",
 		},
 	})
-	class("HumanoidDescription", "Instance", { props = { HeadScale = 1, HeightScale = 1, WidthScale = 1, DepthScale = 1, BodyTypeScale = 0, ProportionScale = 0 } })
+	class("HumanoidDescription", "Instance", {
+		props = {
+			HeadScale = 1,
+			HeightScale = 1,
+			WidthScale = 1,
+			DepthScale = 1,
+			BodyTypeScale = 0,
+			ProportionScale = 0,
+		},
+	})
 	class("Animator", "Instance", {
 		methods = {
 			LoadAnimation = function(self, animation)
@@ -784,7 +907,15 @@ return function(M)
 	})
 	class("ForceField", "Instance", { props = { Visible = true } })
 	class("Tool", "Model", {
-		props = { RequiresHandle = true, CanBeDropped = true, Enabled = true, ManualActivationOnly = false, ToolTip = "", Grip = ID, TextureId = "" },
+		props = {
+			RequiresHandle = true,
+			CanBeDropped = true,
+			Enabled = true,
+			ManualActivationOnly = false,
+			ToolTip = "",
+			Grip = ID,
+			TextureId = "",
+		},
 		events = { "Activated", "Deactivated", "Equipped", "Unequipped" },
 		methods = { Activate = noop, Deactivate = noop },
 	})
@@ -795,14 +926,16 @@ return function(M)
 	class("ValueBase", "Instance", { abstract = true })
 	class("StringValue", "ValueBase", { props = { Value = "" } })
 	class("IntValue", "ValueBase", {
-		props = { Value = {
-			__spec = true,
-			default = 0,
-			type = "number",
-			set = function(self, v)
-				store(self, "Value", math.floor(v))
-			end,
-		} },
+		props = {
+			Value = {
+				__spec = true,
+				default = 0,
+				type = "number",
+				set = function(self, v)
+					store(self, "Value", math.floor(v))
+				end,
+			},
+		},
 	})
 	class("NumberValue", "ValueBase", { props = { Value = 0 } })
 	class("BoolValue", "ValueBase", { props = { Value = false } })
@@ -813,7 +946,11 @@ return function(M)
 	class("BrickColorValue", "ValueBase", { props = { Value = T.BrickColor.new("Medium stone grey") } })
 
 	-- Effects in the world ------------------------------------------------------------------------
-	class("Light", "Instance", { abstract = true, props = { Brightness = 1, Color = c3(255, 255, 255), Enabled = true, Shadows = false } })
+	class(
+		"Light",
+		"Instance",
+		{ abstract = true, props = { Brightness = 1, Color = c3(255, 255, 255), Enabled = true, Shadows = false } }
+	)
 	class("PointLight", "Light", { props = { Range = 8 } })
 	class("SpotLight", "Light", { props = { Range = 16, Angle = 90, Face = Enum.NormalId.Front } })
 	class("SurfaceLight", "Light", { props = { Range = 16, Angle = 90, Face = Enum.NormalId.Front } })
@@ -855,17 +992,48 @@ return function(M)
 			FlipbookFramerate = NR.new(1),
 			FlipbookStartRandom = false,
 		},
-		methods = { Emit = function(self, n)
-			if n ~= nil and type(n) ~= "number" then
-				error("invalid argument #1 to 'Emit' (number expected)", 2)
-			end
-			rawset(self, "_emitted", (rawget(self, "_emitted") or 0) + (n or 16))
-		end, Clear = noop },
+		methods = {
+			Emit = function(self, n)
+				if n ~= nil and type(n) ~= "number" then
+					error("invalid argument #1 to 'Emit' (number expected)", 2)
+				end
+				rawset(self, "_emitted", (rawget(self, "_emitted") or 0) + (n or 16))
+			end,
+			Clear = noop,
+		},
 	})
-	class("Fire", "Instance", { props = { Size = 5, Heat = 9, Color = c3(236, 139, 70), SecondaryColor = c3(139, 80, 55), Enabled = true, TimeScale = 1 } })
-	class("Smoke", "Instance", { props = { Size = 1, Opacity = 0.5, RiseVelocity = 1, Color = c3(255, 255, 255), Enabled = true, TimeScale = 1 } })
+	class("Fire", "Instance", {
+		props = {
+			Size = 5,
+			Heat = 9,
+			Color = c3(236, 139, 70),
+			SecondaryColor = c3(139, 80, 55),
+			Enabled = true,
+			TimeScale = 1,
+		},
+	})
+	class("Smoke", "Instance", {
+		props = {
+			Size = 1,
+			Opacity = 0.5,
+			RiseVelocity = 1,
+			Color = c3(255, 255, 255),
+			Enabled = true,
+			TimeScale = 1,
+		},
+	})
 	class("Sparkles", "Instance", { props = { SparkleColor = c3(144, 25, 255), Enabled = true, TimeScale = 1 } })
-	class("Explosion", "Instance", { props = { Position = V0, BlastRadius = 4, BlastPressure = 500000, DestroyJointRadiusPercent = 1, ExplosionType = Enum.ExplosionType.Craters, Visible = true }, events = { "Hit" } })
+	class("Explosion", "Instance", {
+		props = {
+			Position = V0,
+			BlastRadius = 4,
+			BlastPressure = 500000,
+			DestroyJointRadiusPercent = 1,
+			ExplosionType = Enum.ExplosionType.Craters,
+			Visible = true,
+		},
+		events = { "Hit" },
+	})
 	class("Beam", "Instance", {
 		props = {
 			Attachment0 = N("Instance", "Attachment"),
@@ -910,14 +1078,30 @@ return function(M)
 		},
 		methods = { Clear = noop },
 	})
-	class("DataModelMesh", "Instance", { abstract = true, props = { Scale = v3(1, 1, 1), Offset = V0, VertexColor = v3(1, 1, 1) } })
+	class(
+		"DataModelMesh",
+		"Instance",
+		{ abstract = true, props = { Scale = v3(1, 1, 1), Offset = V0, VertexColor = v3(1, 1, 1) } }
+	)
 	class("SpecialMesh", "DataModelMesh", { props = { MeshType = Enum.MeshType.Head, MeshId = "", TextureId = "" } })
 	class("BlockMesh", "DataModelMesh", {})
 	class("CylinderMesh", "DataModelMesh", {})
 	class("FaceInstance", "Instance", { abstract = true, props = { Face = Enum.NormalId.Front } })
-	class("Decal", "FaceInstance", { props = { Texture = "", Color3 = c3(255, 255, 255), Transparency = 0, ZIndex = 1, LocalTransparencyModifier = 0 } })
+	class("Decal", "FaceInstance", {
+		props = {
+			Texture = "",
+			Color3 = c3(255, 255, 255),
+			Transparency = 0,
+			ZIndex = 1,
+			LocalTransparencyModifier = 0,
+		},
+	})
 	class("Texture", "Decal", { props = { StudsPerTileU = 2, StudsPerTileV = 2, OffsetStudsU = 0, OffsetStudsV = 0 } })
-	class("SurfaceAppearance", "Instance", { props = { ColorMap = "", MetalnessMap = "", NormalMap = "", RoughnessMap = "", Color = c3(255, 255, 255) } })
+	class(
+		"SurfaceAppearance",
+		"Instance",
+		{ props = { ColorMap = "", MetalnessMap = "", NormalMap = "", RoughnessMap = "", Color = c3(255, 255, 255) } }
+	)
 	class("Highlight", "Instance", {
 		props = {
 			Adornee = N("Instance"),
@@ -929,8 +1113,21 @@ return function(M)
 			Enabled = true,
 		},
 	})
-	class("SelectionBox", "Instance", { props = { Adornee = N("Instance"), Color3 = c3(13, 105, 172), LineThickness = 0.15, SurfaceColor3 = c3(13, 105, 172), SurfaceTransparency = 1, Transparency = 0, Visible = true } })
-	class("ClickDetector", "Instance", { props = { MaxActivationDistance = 32, CursorIcon = "" }, events = { "MouseClick", "RightMouseClick", "MouseHoverEnter", "MouseHoverLeave" } })
+	class("SelectionBox", "Instance", {
+		props = {
+			Adornee = N("Instance"),
+			Color3 = c3(13, 105, 172),
+			LineThickness = 0.15,
+			SurfaceColor3 = c3(13, 105, 172),
+			SurfaceTransparency = 1,
+			Transparency = 0,
+			Visible = true,
+		},
+	})
+	class("ClickDetector", "Instance", {
+		props = { MaxActivationDistance = 32, CursorIcon = "" },
+		events = { "MouseClick", "RightMouseClick", "MouseHoverEnter", "MouseHoverLeave" },
+	})
 
 	-- Sound ---------------------------------------------------------------------------------------
 	class("Sound", "Instance", {
@@ -981,7 +1178,11 @@ return function(M)
 	class("SoundGroup", "Instance", { props = { Volume = 0.5 } })
 	class("SoundEffect", "Instance", { abstract = true, props = { Enabled = true, Priority = 0 } })
 	class("EqualizerSoundEffect", "SoundEffect", { props = { HighGain = 0, MidGain = 0, LowGain = 0 } })
-	class("ReverbSoundEffect", "SoundEffect", { props = { DecayTime = 1.5, Density = 1, Diffusion = 1, DryLevel = -6, WetLevel = 0 } })
+	class(
+		"ReverbSoundEffect",
+		"SoundEffect",
+		{ props = { DecayTime = 1.5, Density = 1, Diffusion = 1, DryLevel = -6, WetLevel = 0 } }
+	)
 
 	-- Remotes / bindables --------------------------------------------------------------------------
 	class("RemoteEvent", "Instance", {
@@ -1055,12 +1256,23 @@ return function(M)
 			InputHoldBegin = noop,
 			InputHoldEnd = noop,
 		},
-		events = { "Triggered", "TriggerEnded", "PromptButtonHoldBegan", "PromptButtonHoldEnded", "PromptShown", "PromptHidden" },
+		events = {
+			"Triggered",
+			"TriggerEnded",
+			"PromptButtonHoldBegan",
+			"PromptButtonHoldEnded",
+			"PromptShown",
+			"PromptHidden",
+		},
 	})
 
 	-- Scripts -----------------------------------------------------------------------------------------
 	class("LuaSourceContainer", "Instance", { abstract = true })
-	class("BaseScript", "LuaSourceContainer", { abstract = true, props = { Disabled = false, Enabled = true, RunContext = ANY(nil) } })
+	class(
+		"BaseScript",
+		"LuaSourceContainer",
+		{ abstract = true, props = { Disabled = false, Enabled = true, RunContext = ANY(nil) } }
+	)
 	class("Script", "BaseScript", {})
 	class("LocalScript", "Script", {})
 	class("ModuleScript", "LuaSourceContainer", {})
@@ -1121,7 +1333,11 @@ return function(M)
 			PlayerToHideFrom = N("Instance", "Player"),
 		},
 	})
-	class("SurfaceGuiBase", "LayerCollector", { abstract = true, props = { Adornee = N("Instance"), Face = Enum.NormalId.Front, Active = true } })
+	class(
+		"SurfaceGuiBase",
+		"LayerCollector",
+		{ abstract = true, props = { Adornee = N("Instance"), Face = Enum.NormalId.Front, Active = true } }
+	)
 	class("SurfaceGui", "SurfaceGuiBase", {
 		props = {
 			SizingMode = Enum.SurfaceGuiSizingMode.FixedSize,
@@ -1363,11 +1579,19 @@ return function(M)
 	class("UIScale", "UIComponent", { props = { Scale = 1 } })
 	class("UIConstraint", "UIComponent", { abstract = true })
 	class("UIAspectRatioConstraint", "UIConstraint", {
-		props = { AspectRatio = 1, AspectType = Enum.AspectType.FitWithinMaxSize, DominantAxis = Enum.DominantAxis.Width },
+		props = {
+			AspectRatio = 1,
+			AspectType = Enum.AspectType.FitWithinMaxSize,
+			DominantAxis = Enum.DominantAxis.Width,
+		},
 	})
 	class("UISizeConstraint", "UIConstraint", { props = { MinSize = V2.zero, MaxSize = V2.new(math.huge, math.huge) } })
 	class("UITextSizeConstraint", "UIConstraint", { props = { MinTextSize = 1, MaxTextSize = 100 } })
-	class("UIFlexItem", "UIComponent", { props = { FlexMode = ANY(nil), GrowRatio = 0, ShrinkRatio = 0, ItemLineAlignment = ANY(nil) } })
+	class(
+		"UIFlexItem",
+		"UIComponent",
+		{ props = { FlexMode = ANY(nil), GrowRatio = 0, ShrinkRatio = 0, ItemLineAlignment = ANY(nil) } }
+	)
 	class("UILayout", "UIComponent", { abstract = true })
 	class("UIGridStyleLayout", "UILayout", {
 		abstract = true,
@@ -1401,16 +1625,28 @@ return function(M)
 			AbsoluteCellCount = RO(V2.new(1, 1)),
 		},
 	})
-	class("UIPageLayout", "UIGridStyleLayout", { props = { Animated = true, Circular = false, Padding = T.UDim.new() } })
+	class(
+		"UIPageLayout",
+		"UIGridStyleLayout",
+		{ props = { Animated = true, Circular = false, Padding = T.UDim.new() } }
+	)
 	class("UITableLayout", "UIGridStyleLayout", { props = { Padding = U2.new() } })
 
 	-- Lighting effects -------------------------------------------------------------------------------
 	class("PostEffect", "Instance", { abstract = true, props = { Enabled = true } })
 	class("BlurEffect", "PostEffect", { props = { Size = 24 } })
-	class("ColorCorrectionEffect", "PostEffect", { props = { Brightness = 0, Contrast = 0, Saturation = 0, TintColor = c3(255, 255, 255) } })
+	class(
+		"ColorCorrectionEffect",
+		"PostEffect",
+		{ props = { Brightness = 0, Contrast = 0, Saturation = 0, TintColor = c3(255, 255, 255) } }
+	)
 	class("BloomEffect", "PostEffect", { props = { Intensity = 1, Size = 24, Threshold = 2 } })
 	class("SunRaysEffect", "PostEffect", { props = { Intensity = 0.25, Spread = 1 } })
-	class("DepthOfFieldEffect", "PostEffect", { props = { FarIntensity = 0.75, FocusDistance = 0.05, InFocusRadius = 10, NearIntensity = 0.75 } })
+	class(
+		"DepthOfFieldEffect",
+		"PostEffect",
+		{ props = { FarIntensity = 0.75, FocusDistance = 0.05, InFocusRadius = 10, NearIntensity = 0.75 } }
+	)
 	class("ColorGradingEffect", "PostEffect", { props = { TonemapperPreset = ANY(nil) } })
 	class("Atmosphere", "Instance", {
 		props = { Density = 0.395, Offset = 0, Color = c3(199, 170, 107), Decay = c3(92, 60, 13), Glare = 0, Haze = 0 },
@@ -1478,7 +1714,11 @@ return function(M)
 	class("BasePlayerGui", "Instance", { abstract = true })
 	class("PlayerGui", "BasePlayerGui", {
 		notCreatable = true,
-		props = { ScreenOrientation = ANY(nil), SelectionImageObject = N("Instance"), CurrentScreenOrientation = ANY(nil) },
+		props = {
+			ScreenOrientation = ANY(nil),
+			SelectionImageObject = N("Instance"),
+			CurrentScreenOrientation = ANY(nil),
+		},
 		methods = {
 			GetTopbarTransparency = stub(0),
 			SetTopbarTransparency = noop,
@@ -1486,7 +1726,10 @@ return function(M)
 		events = { "TopbarTransparencyChangedSignal" },
 	})
 	class("PlayerScripts", "Instance", { notCreatable = true })
-	class("Team", "Instance", { props = { TeamColor = T.BrickColor.new("White"), AutoAssignable = true }, events = { "PlayerAdded", "PlayerRemoved" } })
+	class("Team", "Instance", {
+		props = { TeamColor = T.BrickColor.new("White"), AutoAssignable = true },
+		events = { "PlayerAdded", "PlayerRemoved" },
+	})
 
 	class("Mouse", "Instance", {
 		notCreatable = true,
@@ -1502,7 +1745,16 @@ return function(M)
 			ViewSizeX = 1920,
 			ViewSizeY = 1080,
 		},
-		events = { "Button1Down", "Button1Up", "Button2Down", "Button2Up", "Move", "WheelForward", "WheelBackward", "Idle" },
+		events = {
+			"Button1Down",
+			"Button1Up",
+			"Button2Down",
+			"Button2Up",
+			"Move",
+			"WheelForward",
+			"WheelBackward",
+			"Idle",
+		},
 	})
 	-- Unused fmt guard (keeps selene quiet if helpers above change).
 	local _ = fmt

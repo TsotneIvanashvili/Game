@@ -73,7 +73,15 @@ return function(M)
 		end
 		local ix0, ix1, iz0, iz1 = floor(x0 / CELL), floor(x1 / CELL), floor(z0 / CELL), floor(z1 / CELL)
 		local range = cellRange[part]
-		if range and indexed[part] ~= nil and indexed[part] ~= true and range[1] == ix0 and range[2] == ix1 and range[3] == iz0 and range[4] == iz1 then
+		if
+			range
+			and indexed[part] ~= nil
+			and indexed[part] ~= true
+			and range[1] == ix0
+			and range[2] == ix1
+			and range[3] == iz0
+			and range[4] == iz1
+		then
 			return -- still in the same cells
 		end
 		unindex(part)
@@ -115,7 +123,8 @@ return function(M)
 	-- Called by Instance.Parent changes.
 	function M.onReparent(self, _old, newParent)
 		local inWs = newParent ~= nil and (newParent == M.workspace or rawget(newParent, "_inWs") == true)
-		local inGame = newParent ~= nil and (rawget(newParent, "_isGame") == true or rawget(newParent, "_inGame") == true)
+		local inGame = newParent ~= nil
+			and (rawget(newParent, "_isGame") == true or rawget(newParent, "_inGame") == true)
 		if (rawget(self, "_inWs") == true) == inWs and (rawget(self, "_inGame") == true) == inGame then
 			return
 		end
@@ -431,7 +440,8 @@ return function(M)
 		for _, inst in props.FilterDescendantsInstances do
 			set[inst] = true
 		end
-		local include = props.FilterType == Enum.RaycastFilterType.Include or props.FilterType == Enum.RaycastFilterType.Whitelist
+		local include = props.FilterType == Enum.RaycastFilterType.Include
+			or props.FilterType == Enum.RaycastFilterType.Whitelist
 		local respectCollide = props.RespectCanCollide
 		local function listed(inst)
 			local node = inst
@@ -900,7 +910,12 @@ return function(M)
 			-- A client AlignPosition on the root (climbing) drives it instead of walking.
 			for align in aligns do
 				local a0 = raw(align, "Attachment0")
-				if a0 and rawget(a0, "_parent") == root and raw(align, "Enabled") and not rawget(align, "_destroyed") then
+				if
+					a0
+					and rawget(a0, "_parent") == root
+					and raw(align, "Enabled")
+					and not rawget(align, "_destroyed")
+				then
 					local target = raw(align, "Position")
 					local cfr = raw(root, "CFrame")
 					local delta = target - cfr.Position
@@ -1067,7 +1082,13 @@ return function(M)
 	local touching: { [any]: { [any]: boolean } } = {}
 	M.loose = loose
 	local function considerLoose(part)
-		if rawget(part, "_inWs") and part._cls.isa.BasePart and part._cls.name ~= "Terrain" and not raw(part, "Anchored") and not rawget(part, "_joints") then
+		if
+			rawget(part, "_inWs")
+			and part._cls.isa.BasePart
+			and part._cls.name ~= "Terrain"
+			and not raw(part, "Anchored")
+			and not rawget(part, "_joints")
+		then
 			loose[part] = true
 		else
 			loose[part] = nil
@@ -1089,7 +1110,12 @@ return function(M)
 		return nil
 	end
 	local function stepLoose(part, dt)
-		if rawget(part, "_destroyed") or not rawget(part, "_inWs") or raw(part, "Anchored") or rawget(part, "_joints") then
+		if
+			rawget(part, "_destroyed")
+			or not rawget(part, "_inWs")
+			or raw(part, "Anchored")
+			or rawget(part, "_joints")
+		then
 			loose[part] = nil
 			return
 		end

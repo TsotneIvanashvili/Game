@@ -7,7 +7,8 @@
 -- `v.X = 1` is not caught here (Luau's type checker catches it in src/ already).
 
 return function(M)
-	local sqrt, sin, cos, abs, atan2, asin, floor = math.sqrt, math.sin, math.cos, math.abs, math.atan2, math.asin, math.floor
+	local sqrt, sin, cos, abs, atan2, asin, floor =
+		math.sqrt, math.sin, math.cos, math.abs, math.atan2, math.asin, math.floor
 	local fmt = string.format
 
 	local function argError(fn: string, i: number, expected: string, got: any)
@@ -297,6 +298,7 @@ return function(M)
 	local CF = { __type = "CFrame" }
 	local CFm = {}
 	local function cf(x, y, z, a, b, c, d, e, f, g, h, i)
+		-- selene: allow(mixed_table)
 		return setmetatable({ X = x, Y = y, Z = z, a, b, c, d, e, f, g, h, i }, CF)
 	end
 	local function isCF(v)
@@ -426,7 +428,21 @@ return function(M)
 		return true
 	end
 	CF.__tostring = function(c)
-		return fmt("%g, %g, %g, %g, %g, %g, %g, %g, %g, %g, %g, %g", c.X, c.Y, c.Z, c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8], c[9])
+		return fmt(
+			"%g, %g, %g, %g, %g, %g, %g, %g, %g, %g, %g, %g",
+			c.X,
+			c.Y,
+			c.Z,
+			c[1],
+			c[2],
+			c[3],
+			c[4],
+			c[5],
+			c[6],
+			c[7],
+			c[8],
+			c[9]
+		)
 	end
 	local function needCF(fn: string, i: number, v)
 		if not isCF(v) then
@@ -636,7 +652,7 @@ return function(M)
 	local CFrame = {}
 	function CFrame.new(...)
 		local n = select("#", ...)
-		local a, b, c = ...
+		local a, b = ...
 		if n == 0 then
 			return IDENTITY
 		end
@@ -680,7 +696,10 @@ return function(M)
 	end
 	CFrame.fromEulerAnglesXYZ = CFrame.Angles
 	function CFrame.fromEulerAnglesYXZ(rx, ry, rz)
-		rx, ry, rz = num("CFrame.fromEulerAnglesYXZ", 1, rx, 0), num("fromEulerAnglesYXZ", 2, ry, 0), num("fromEulerAnglesYXZ", 3, rz, 0)
+		rx, ry, rz =
+			num("CFrame.fromEulerAnglesYXZ", 1, rx, 0),
+			num("fromEulerAnglesYXZ", 2, ry, 0),
+			num("fromEulerAnglesYXZ", 3, rz, 0)
 		return mulCF(mulCF(rotY(ry), rotX(rx)), rotZ(rz))
 	end
 	CFrame.fromOrientation = CFrame.fromEulerAnglesYXZ
@@ -877,7 +896,12 @@ return function(M)
 		local function l(x, y)
 			return x + (y - x) * t
 		end
-		return udim2(l(a.X.Scale, b.X.Scale), l(a.X.Offset, b.X.Offset), l(a.Y.Scale, b.Y.Scale), l(a.Y.Offset, b.Y.Offset))
+		return udim2(
+			l(a.X.Scale, b.X.Scale),
+			l(a.X.Offset, b.X.Offset),
+			l(a.Y.Scale, b.Y.Scale),
+			l(a.Y.Offset, b.Y.Offset)
+		)
 	end
 	M.types.UDim2 = {
 		new = function(xs, xo, ys, yo)
@@ -943,10 +967,11 @@ return function(M)
 	local NSK = valueType("NumberSequenceKeypoint")
 	M.types.NumberSequenceKeypoint = {
 		new = function(t, v, e)
-			return setmetatable(
-				{ Time = num("NumberSequenceKeypoint.new", 1, t), Value = num("NumberSequenceKeypoint.new", 2, v), Envelope = e or 0 },
-				NSK
-			)
+			return setmetatable({
+				Time = num("NumberSequenceKeypoint.new", 1, t),
+				Value = num("NumberSequenceKeypoint.new", 2, v),
+				Envelope = e or 0,
+			}, NSK)
 		end,
 	}
 	local function checkKeypoints(kind: string, kps)
@@ -1084,7 +1109,10 @@ return function(M)
 	M.types.PhysicalProperties = {
 		new = function(density, friction, elasticity, fw, ew)
 			if typeof(density) == "table" then -- Enum.Material
-				return setmetatable({ Density = 0.7, Friction = 0.3, Elasticity = 0.5, FrictionWeight = 1, ElasticityWeight = 1 }, PP)
+				return setmetatable(
+					{ Density = 0.7, Friction = 0.3, Elasticity = 0.5, FrictionWeight = 1, ElasticityWeight = 1 },
+					PP
+				)
 			end
 			return setmetatable({
 				Density = num("PhysicalProperties.new", 1, density),
@@ -1121,7 +1149,12 @@ return function(M)
 			}, FontT)
 		end,
 		fromEnum = function(e)
-			return setmetatable({ Family = "rbxasset://fonts/" .. e.Name, Weight = M.Enum.FontWeight.Regular, Style = M.Enum.FontStyle.Normal, Bold = false }, FontT)
+			return setmetatable({
+				Family = "rbxasset://fonts/" .. e.Name,
+				Weight = M.Enum.FontWeight.Regular,
+				Style = M.Enum.FontStyle.Normal,
+				Bold = false,
+			}, FontT)
 		end,
 		fromName = function(name, weight, style)
 			return M.types.Font.new("rbxasset://fonts/families/" .. name .. ".json", weight, style)
@@ -1353,13 +1386,20 @@ return function(M)
 			end
 			if k == "FilterDescendantsInstances" then
 				if type(v) ~= "table" or getmetatable(v) ~= nil then
-					error("Unable to assign property FilterDescendantsInstances. Array expected, got " .. M.typeof(v), 2)
+					error(
+						"Unable to assign property FilterDescendantsInstances. Array expected, got " .. M.typeof(v),
+						2
+					)
 				end
 				local list = {}
 				for i, inst in v do
 					if M.typeof(inst) ~= "Instance" then
 						error(
-							fmt("Unable to assign property FilterDescendantsInstances. Instance expected at index %s, got %s", tostring(i), M.typeof(inst)),
+							fmt(
+								"Unable to assign property FilterDescendantsInstances. Instance expected at index %s, got %s",
+								tostring(i),
+								M.typeof(inst)
+							),
 							2
 						)
 					end
@@ -1420,7 +1460,10 @@ return function(M)
 	}
 	local RR = valueType("RaycastResult")
 	function M.raycastResult(inst, pos, normal, material, distance)
-		return setmetatable({ Instance = inst, Position = pos, Normal = normal, Material = material, Distance = distance }, RR)
+		return setmetatable(
+			{ Instance = inst, Position = pos, Normal = normal, Material = material, Distance = distance },
+			RR
+		)
 	end
 
 	-- Misc rarely used constructors (present so `typeof` and construction work).

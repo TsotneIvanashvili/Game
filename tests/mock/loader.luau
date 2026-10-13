@@ -177,6 +177,7 @@ return function(M)
 				"gcinfo",
 			}
 		do
+			-- selene: allow(global_usage)
 			g[k] = _G[k]
 		end
 		g.ypcall = pcall
@@ -335,7 +336,10 @@ return function(M)
 		end
 		if results.n ~= 2 then
 			entry.state = "failed"
-			error(fmt("Module code did not return exactly one value (%s returned %d)", M.fullName(target), results.n - 1), 2)
+			error(
+				fmt("Module code did not return exactly one value (%s returned %d)", M.fullName(target), results.n - 1),
+				2
+			)
 		end
 		entry.value = results[2]
 		entry.state = "done"
