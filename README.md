@@ -1,14 +1,17 @@
-# Mountain Survival
+# Summit Expedition
 
-A co-op (up to 6 players) mountain-expedition survival game for Roblox, written in Luau and synced
-with Rojo. Climb from Base Camp through forest, cliff and snowfield to the Ridge Col while
-managing stamina, hunger, thirst, warmth, wet clothes, injuries, a pack with real weight, changing
-weather and rockfall. Teammates revive, carry and treat each other; camps are checkpoints.
+A co-op (up to 6 players) polar-mountain expedition survival game for Roblox, written in Luau and
+synced with Rojo. Gear up in the equipment tent at Base Camp, then climb through a snow valley,
+an icefall of crevasses and rope bridges, an ice wall, a glacier and a knife-edge ridge to the
+Summit, managing stamina, food, water, warmth, injuries, a pack with real weight, a day/night
+cycle and storms. Teammates revive, carry and treat each other; camps are checkpoints.
 
-> **Status: code-complete vertical slice, NOT yet play-tested in Roblox Studio.**
-> Every file compiles with the Luau compiler and passes selene and StyLua; the pure logic layer
-> passes its unit and stress tests. Nothing has been run inside Roblox yet. All art is greybox
-> and the game is silent (no sound ids yet). See [docs/ROADMAP.md](docs/ROADMAP.md).
+Art direction: stylized, bright and chunky (see [docs/ART_DIRECTION.md](docs/ART_DIRECTION.md)).
+
+> **Status: playable build, NOT yet verified in Roblox Studio.**
+> Every file compiles with the Luau compiler and passes selene and StyLua; the logic, climate,
+> terrain and route have unit tests. Nothing has been confirmed inside the real Roblox engine
+> yet, and the game is silent (no sound ids yet). See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Docs
 
@@ -16,7 +19,8 @@ weather and rockfall. Teammates revive, carry and treat each other; camps are ch
   remotes, data models, survival math, tag contract for hand-built maps)
 - [docs/ROADMAP.md](docs/ROADMAP.md): checkpoint status, vertical-slice checklist, next steps
 - [docs/TESTING.md](docs/TESTING.md): automated checks and the manual Studio test plan
-- [docs/ASSET_SPECS.md](docs/ASSET_SPECS.md): production specs for 3D art
+- [docs/ART_DIRECTION.md](docs/ART_DIRECTION.md): the stylized look, palette, UI language
+- [docs/ASSET_SPECS.md](docs/ASSET_SPECS.md): construction specs for 3D art
 
 ## Setup
 
@@ -34,7 +38,7 @@ weather and rockfall. Teammates revive, carry and treat each other; camps are ch
    does not enforce a player cap.
 7. Verify **Workspace.StreamingEnabled = true** in Properties (the project file sets it).
 
-Press Play. The server output shows `[Server] world generated in ...s` and `[Server] 15 services started in ...s`. To
+Press Play. The world builds before anyone spawns. The server output shows `[World] ...`, `[Server] 15 services started in ...s` and a one-line `[Report] ...` summary of what was built. To
 use a hand-built map instead, put a Model named `Mountain` in Workspace and follow the tag
 contract in ARCHITECTURE section 16.
 
@@ -47,11 +51,16 @@ contract in ARCHITECTURE section 16.
 | Space | Jump; jump off the wall while climbing |
 | C | Grab / let go of a climbable wall (rock; ice needs a held ice axe) |
 | Tab or I | Backpack: worn gear, contents, use / equip / hold / drop / give / treat |
-| B | Build Book (R rotate, click place, right-click or Esc cancel) |
+| B | Build Book: campfire, tent, tarp shelter, wind wall, trail marker (R rotate, click place, right-click or Esc cancel) |
+| H | Gear toggles: helmet, mask, goggles, headlamp |
+| M | Route panel: camps reached and altitude |
+| V | First / third person |
+| 1-4 | Hotbar quick use (water, food, first aid, ice axe) |
 | G | Ping a spot for your team |
 | X | Set down a teammate you're carrying |
-| E / F / Q | World prompts: gather, fill and drink water, sign logbook, open crate or outfitter, rest by fire, add wood, cook and boil, revive (E), carry (F) |
+| E / F / Q | World prompts: gather wood, fill bottles, open crate or outfitter, sleep, rest by the fire, add wood, cook and boil, revive (E), carry (F) |
 
+Stepping into a camp's green ring checks you in there.
 When downed, hold the on-screen "Give up" button to evacuate to your last camp (your pack stays
 where you fell). Gamepad and touch buttons are bound for climb, sprint, drop and ping.
 
