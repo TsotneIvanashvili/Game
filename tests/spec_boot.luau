@@ -156,6 +156,72 @@ end
 print("== boot")
 local alice, bob
 local TerrainModel, WorldLayout, terrainModel
+step("mock self-check: datatype math and engine rules", function()
+	server(function()
+		local T = rt.types
+		local function near(a: number, b: number, what: string)
+			check(math.abs(a - b) < 1e-6, string.format("%s: %g vs %g", what, a, b))
+		end
+		local V3, CF = T.Vector3, T.CFrame
+		local frame = CF.new(3, -2, 7) * CF.Angles(0.3, -1.1, 0.7)
+		local x, y, z = CF.Angles(0.3, -1.1, 0.7):ToEulerAnglesXYZ()
+		near(x, 0.3, "ToEulerAnglesXYZ x")
+		near(y, -1.1, "ToEulerAnglesXYZ y")
+		near(z, 0.7, "ToEulerAnglesXYZ z")
+		check((frame * frame:Inverse()):FuzzyEq(CF.identity, 1e-9), "cf * cf:Inverse() ~= identity")
+		local v = V3.new(1, 2, 3)
+		check(frame:PointToObjectSpace(frame * v):FuzzyEq(v, 1e-9), "PointToObjectSpace round trip")
+		check(frame:VectorToObjectSpace(frame:VectorToWorldSpace(v)):FuzzyEq(v, 1e-9), "VectorToWorldSpace round trip")
+		local look = CF.lookAt(V3.new(0, 0, 0), V3.new(3, 4, 0)).LookVector
+		check(look:FuzzyEq(V3.new(0.6, 0.8, 0), 1e-9), "lookAt LookVector")
+		local o = CF.fromOrientation(0.2, 0.5, -0.4)
+		local ox, oy, oz = o:ToOrientation()
+		near(ox, 0.2, "ToOrientation x")
+		near(oy, 0.5, "ToOrientation y")
+		near(oz, -0.4, "ToOrientation z")
+		check(V3.xAxis:Cross(V3.yAxis) == V3.zAxis, "x cross y ~= z")
+		local h, sat, val = T.Color3.fromHSV(0.3, 0.6, 0.9):ToHSV()
+		near(h, 0.3, "HSV h")
+		near(sat, 0.6, "HSV s")
+		near(val, 0.9, "HSV v")
+		check(typeof(V3.zero) == "Vector3" and typeof(frame) == "CFrame", "typeof datatypes")
+		check(Enum.Material.Snow == Enum.Material.Snow and Enum.Material.Snow ~= Enum.Material.Ice, "enum identity")
+		check(not pcall(function()
+			return (Enum.Material :: any).Snwo
+		end), "unknown Enum.Material item did not error")
+		local part = rt.Instance.new("Part")
+		check(not pcall(function()
+			(part :: any).Sizee = V3.one
+		end), "unknown property write did not error")
+		check(not pcall(function()
+			part.Size = 5 :: any
+		end), "wrong property type did not error")
+		check(not pcall(function()
+			part:SetAttribute("T", {})
+		end), "table attribute did not error")
+		part.Anchored = true
+		part.Size = V3.new(10, 2, 10)
+		part.CFrame = CF.new(5000, 100, 5000)
+		part.Parent = rt.workspace
+		check(not pcall(function()
+			part:SetNetworkOwner(nil)
+		end), "SetNetworkOwner on an anchored part did not error")
+		local hit = rt.workspace:Raycast(V3.new(5001, 120, 5001), V3.new(0, -50, 0))
+		check(hit and hit.Instance == part and hit.Normal:FuzzyEq(V3.yAxis, 1e-9), "raycast missed the part top")
+		near(hit.Position.Y, 101, "raycast hit height")
+		local model = rt.Instance.new("Model")
+		part.Parent = model
+		model.PrimaryPart = part
+		model.Parent = rt.workspace
+		model:PivotTo(CF.new(6000, 50, 6000))
+		check(part.Position == V3.new(6000, 50, 6000), "PivotTo did not move the primary part")
+		model:Destroy()
+		check(not pcall(function()
+			part.Parent = rt.workspace
+		end), "reparenting a destroyed part did not error")
+	end)
+end)
+
 step("inject terrain surface from Shared/Logic/TerrainModel", function()
 	TerrainModel = sharedModule("Logic", "TerrainModel")
 	WorldLayout = sharedModule("Config", "WorldLayout")
@@ -912,6 +978,27 @@ step("death bypassing the downed state respawns at the last camp", function()
 	local camp = campByIndex(attr(alice, "Checkpoint"))
 	local d = (rootPos(alice) - camp:GetPivot().Position).Magnitude
 	check(d < 80, string.format("respawned %.0f studs from checkpoint camp", d))
+end)
+
+step("DataStore outage: a joining player retries, then plays read-only", function()
+	-- DataService logs every failed attempt; those warnings are the point of this step.
+	table.insert(ALLOWED_WARNINGS, "^%[DataService%] load Carol failed")
+	rt.dataStoreFailure = "502: API Services rejected request with error. HTTP 503 (Service Unavailable)"
+	local carol = rt.addPlayer("Carol", 1003)
+	runUntil(function()
+		return attr(carol, "Checkpoint") ~= nil
+	end, 60, "Carol to be ready in read-only mode")
+	rt.dataStoreFailure = nil
+	check(
+		server(function()
+			return Registry.get("DataService").isReadOnly(carol)
+		end),
+		"profile not marked read-only after a DataStore outage"
+	)
+	rt.run(1)
+	rt.removePlayer(carol)
+	rt.run(1)
+	table.remove(ALLOWED_WARNINGS)
 end)
 
 -- (d) disconnect while carrying, rejoin -----------------------------------------------------------------

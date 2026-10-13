@@ -8,7 +8,7 @@
 --   rt.run(10)                      -- advance 10 virtual seconds (30 Hz frames)
 --   rt.call(rt.clientOf(p1), function() ... end) -- run code inside a context, waiting for it
 --
--- Simplifications (documented in tests/mock/README-less header comments of each file):
+-- Simplifications (details in the header comment of each tests/mock/*.luau file):
 --   * One shared instance tree. Clients see server instances directly (no replication lag);
 --     instances a client creates are owned by it and invisible to the server and other
 --     clients; client writes to server-owned instances are per-client overlays (local-only),
