@@ -1079,8 +1079,8 @@ def presets(s: Scene):
                            fov=68, shadow_dist=600, desc="The glacier switchbacks under the serac band."),
         "summit_view": dict(pos=(summit[2] + 6, summit[3] + 8, summit[4] + 4), target=(0, 300, 2300), fov=70,
                             shadow_dist=1500, desc="From the summit, looking back down the whole route."),
-        "vista": dict(pos=(1100, 1050, -500), target=(-80, 250, 2000), fov=55, shadow_dist=4000,
-                      desc="The whole mountain from the air, south-east of Base Camp."),
+        "vista": dict(pos=(560, 900, -700), target=(-60, 250, 1900), fov=60, shadow_dist=4000,
+                      desc="The whole mountain from the air, above the peaks south-east of Base Camp."),
         "route_map": dict(pos=(0, 3000, 1900), target=(0, 0, 1900), map=True,
                           desc="Top-down map of the whole route with the camps marked."),
     }

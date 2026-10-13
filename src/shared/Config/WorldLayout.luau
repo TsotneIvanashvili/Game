@@ -80,31 +80,47 @@ local SERAC = (function()
 	}
 end)()
 
--- Backdrop peaks in a ring outside the terrain, each turned to face the mountain. The face
--- towards the mountain reaches 0.707 * top out from the apex, so the apex stands that far
--- (plus a margin) beyond the terrain's edge.
+-- Backdrop peaks in a ring outside the terrain, each turned (roughly) to face the mountain,
+-- standing far enough out that no footprint reaches over the terrain's edge.
 local BOUNDS = { x0 = -1024, z0 = -896, x1 = 1024, z1 = 4864 }
 local function backdrop(): { any }
-	local tops = { 900, 1050, 820, 1120, 960, 1080, 880, 1150, 990, 1040, 930, 1100 }
+	-- Deterministic but irregular: heights, spacing, facing and distance all vary, and a second,
+	-- taller row stands further out, so the horizon reads as a range, not a sawtooth.
+	local state = 4242
+	local function rand(lo: number, hi: number): number -- Park-Miller: exact in doubles
+		state = (state * 16807) % 2147483647
+		return lo + (hi - lo) * state / 2147483647
+	end
 	local peaks = {}
-	local n = 0
 	local function add(x: number, z: number, top: number, yaw: number)
 		table.insert(peaks, { x = x, z = z, top = top, yaw = yaw })
 	end
-	for z = BOUNDS.z0 - 200, BOUNDS.z1 + 200, 600 do
-		n += 1
-		local top = tops[(n - 1) % #tops + 1]
-		add(BOUNDS.x0 - top * 0.707 - 140, z, top, 90)
-		local top2 = tops[(n + 4) % #tops + 1]
-		add(BOUNDS.x1 + top2 * 0.707 + 140, z + 300, top2, -90)
+	-- One side: `along` runs over [a0, a1]; place(t, out, top, yaw) positions a peak.
+	local function side(a0: number, a1: number, place: (number, number, number, number) -> (), yaw: number)
+		for row = 0, 1 do
+			local t = a0 - 300 + rand(0, 300) + row * 260
+			while t < a1 + 300 do
+				local top = if row == 0 then rand(620, 980) else rand(900, 1150)
+				-- Turned up to 12 degrees off square, a footprint corner reaches 0.95 * top
+				-- towards the mountain (0.707 * top when square on).
+				local out = top * 0.96 + 160 + row * rand(500, 800)
+				place(t, out, top, yaw + rand(-12, 12))
+				t += rand(380, 640) * (1 + row * 0.4)
+			end
+		end
 	end
-	for x = -900, 900, 600 do
-		n += 1
-		local top = tops[(n - 1) % #tops + 1]
-		add(x, BOUNDS.z0 - top * 0.707 - 140, top, 0)
-		local top2 = tops[(n + 6) % #tops + 1]
-		add(x + 300, BOUNDS.z1 + top2 * 0.707 + 140, top2, 180)
-	end
+	side(BOUNDS.z0, BOUNDS.z1, function(t, out, top, yaw)
+		add(BOUNDS.x0 - out, t, top, yaw)
+	end, 90)
+	side(BOUNDS.z0, BOUNDS.z1, function(t, out, top, yaw)
+		add(BOUNDS.x1 + out, t, top, yaw)
+	end, -90)
+	side(BOUNDS.x0, BOUNDS.x1, function(t, out, top, yaw)
+		add(t, BOUNDS.z0 - out, top, yaw)
+	end, 0)
+	side(BOUNDS.x0, BOUNDS.x1, function(t, out, top, yaw)
+		add(t, BOUNDS.z1 + out, top, yaw)
+	end, 180)
 	return peaks
 end
 
@@ -136,7 +152,8 @@ local WorldLayout = {
 	-- (sx, sz), `yaw` degrees (local +z = (sin yaw, cos yaw)), height y at the centre rising
 	-- `grade` per stud along local +z. blend: studs (or per side n/s/e/w = local +z/-z/+x/-x;
 	-- 0 = a hard cliff edge). locked = re-applied after the trail corridors. mode "raise" =
-	-- only ever lifts the ground to y, never lowers it.
+	-- only ever lifts the ground to y, never lowers it. jitter = studs of noise on the height
+	-- (an irregular top and face).
 	Areas = {
 		{ name = "BaseCampFloor", kind = "pad", x = 0, z = 0, y = 0, r = 150, blend = 120, locked = true },
 		-- The avalanche slope: a broad 31-degree snow face on the valley's west side.
@@ -188,7 +205,8 @@ local WorldLayout = {
 			sz = 40,
 			yaw = SERAC.yaw,
 			y = 470,
-			blend = { n = 40, e = 30, w = 30 },
+			blend = { n = 50, e = 90, w = 90 },
+			jitter = 6,
 			mode = "raise",
 			locked = true,
 		},
@@ -305,14 +323,15 @@ local WorldLayout = {
 		{ id = "V1", at = V(70, 8, 380) },
 		{ id = "V2", at = V(-50, 18, 620) },
 		{ id = "V3", at = V(40, 28, 800) },
-		-- Headwall switchbacks
-		{ id = "HeadwallFoot", at = V(-200, 40, 930) },
-		{ id = "H1", at = V(230, 76, 1010) },
-		{ id = "H2", at = V(262, 82, 1060) },
-		{ id = "H3", at = V(-240, 122, 1150) },
-		{ id = "H4", at = V(-268, 128, 1205) },
-		{ id = "H5", at = V(240, 166, 1300) },
-		{ id = "H6", at = V(262, 172, 1355) },
+		{ id = "V4", at = V(-60, 36, 1000) },
+		-- Headwall switchbacks across a 22-degree snow face
+		{ id = "HeadwallFoot", at = V(-220, 44, 1100) },
+		{ id = "H1", at = V(230, 80, 1160) },
+		{ id = "H2", at = V(262, 86, 1205) },
+		{ id = "H3", at = V(-240, 124, 1265) },
+		{ id = "H4", at = V(-268, 130, 1310) },
+		{ id = "H5", at = V(240, 166, 1370) },
+		{ id = "H6", at = V(262, 172, 1415) },
 		{ id = "H7", at = V(-40, 196, 1500) },
 		{ id = "Camp1", at = V(-150, 200, 1630) },
 		{ at = V(-110, 200, 1700) },

@@ -6,7 +6,7 @@
 -- TerrainModel.new(layout) shapes the surface in five passes:
 --   1. Landscape. The main route is sampled every SAMPLE studs; each sample carries the trail
 --      elevation and its section's relief (valley walls `up`, ridge drop `down`, flat `floor`
---      half-width, noise `rough`). Inverse-distance weighting spreads them into smooth fields,
+--      half-width, noise `rough`). A smoothing kernel spreads them into fields,
 --      and with d = distance to the route every column becomes
 --          elevation + up * valley(d) - down * ridge(d) + mountain noise(d) + surface detail
 --      so the trail runs along a valley floor or a ridge crest while fbm + ridged noise raise
@@ -46,7 +46,12 @@ local SNOW, GLACIER, ROCK = 1, 2, 3
 local MAT_NAMES = TerrainModel.MATERIALS
 
 -- Landscape shape constants (studs).
-local IDW_SOFT = 30 * 30 -- inverse-distance softening (d^2 + IDW_SOFT)^-2
+-- Route samples are spread into fields with a Gaussian kernel near the route (smooth: the
+-- slope between two switchback legs is an even ramp, not two terraces and a step) plus a
+-- weak inverse-distance tail that takes over far from the route.
+local KERNEL_SIGMA = 100
+local FAR_RADIUS = 150
+local FAR_WEIGHT = 0.05
 local VALLEY_WALL = 700 -- valley walls rise over this distance beyond the floor
 local RIDGE_FALL = 240 -- ridge flanks fall off with this e-folding distance
 local MOUNTAIN_RAMP = 500 -- big noise fades in over this distance beyond the floor
@@ -247,6 +252,22 @@ local function routeSamples(layout: any): { Sample }
 		local nextPoint = route[i + 1]
 		if not nextPoint then
 			push(p.at.X, p.at.Z, p.at.Y)
+			-- Carry the last pitch on past the end, so the smoothing kernel sees the summit
+			-- from both sides instead of averaging it down into its own approach.
+			local prev = route[i - 1]
+			if prev then
+				local dx, dz = p.at.X - prev.at.X, p.at.Z - prev.at.Z
+				local flat = math.sqrt(dx * dx + dz * dz)
+				if flat > 1e-6 then
+					local grade = (p.at.Y - prev.at.Y) / flat
+					local reach = 2 * KERNEL_SIGMA
+					local n = math.ceil(reach / TerrainModel.SAMPLE)
+					for k = 1, n do
+						local d = reach * k / n
+						push(p.at.X + dx / flat * d, p.at.Z + dz / flat * d, p.at.Y + grade * d)
+					end
+				end
+			end
 			break
 		end
 		local a, b = p.at, nextPoint.at
@@ -322,6 +343,9 @@ local function areaWeight(def: any, x: number, z: number): (number, number)
 	local lx = dx * cs - dz * sn
 	local lz = dx * sn + dz * cs
 	local y = def.y + (def.grade or 0) * lz
+	if def.jitter then
+		y += def.jitter * math.noise(x / 18, 77.7, z / 18)
+	end
 	local hx, hz = def.sx / 2, def.sz / 2
 	local ox, oz = 0, 0
 	local blend = def.blend or 0
@@ -443,7 +467,7 @@ function TerrainModel.new(layout: any): Model
 	end
 
 	-- 1. Landscape: smooth fields on coarse grids, then every column. ---------------------------
-	-- The relief fields come from inverse-distance weighting the route samples on a 32-stud
+	-- The relief fields come from kernel-weighting the route samples on a 32-stud
 	-- grid; the distance to the route needs more detail and gets a 16-stud grid.
 	local samples = routeSamples(layout)
 	local segments = TerrainModel.segments(layout)
@@ -466,12 +490,14 @@ function TerrainModel.new(layout: any): Model
 	end
 	local fE, fUp, fDown, fFloor, fRough, fD = {}, {}, {}, {}, {}, {}
 	local IDW_STEP = 2 * TerrainModel.COARSE
+	local invTwoSigma2 = 1 / (2 * KERNEL_SIGMA * KERNEL_SIGMA)
 	local inx = coarseGrid(IDW_STEP, function(x: number, z: number, idx: number)
 		local sw, sy, su, sd, sf, sr = 0, 0, 0, 0, 0, 0
 		for n = 1, nS do
 			local dx, dz = x - sX[n], z - sZ[n]
-			local q = dx * dx + dz * dz + IDW_SOFT
-			local w = 1 / (q * q)
+			local d2 = dx * dx + dz * dz
+			local far = FAR_RADIUS * FAR_RADIUS / (d2 + FAR_RADIUS * FAR_RADIUS)
+			local w = math.exp(-d2 * invTwoSigma2) + FAR_WEIGHT * far * far
 			sw += w
 			sy += w * sY[n]
 			su += w * sU[n]
@@ -835,7 +861,8 @@ function TerrainModel.new(layout: any): Model
 
 	local function column(i: number, k: number): (number, number, number, number)
 		local h = getH(i, k)
-		local low = h
+		-- Columns on the world's edge go all the way down, so the rim is a solid wall.
+		local low = if i == 0 or k == 0 or i == nx - 1 or k == nz - 1 then 0 else h
 		if i > 0 then
 			low = math.min(low, getH(i - 1, k))
 		end
